@@ -59,6 +59,63 @@ function loadSessionCookie() {
   return null;
 }
 
+async function refreshFacultySession() {
+  const tokenData = { source: 'web', uid: 13178, email: 'shipraguptaj@oriental.ac.in', role: 'instructor' };
+  const params = new URLSearchParams();
+  params.append('GenerateAccessToken', 'true');
+  params.append('data', Buffer.from(JSON.stringify(tokenData)).toString('base64'));
+
+  try {
+    const res = await fetch('https://portal.vmedulife.com/api/tokenmanagement.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+
+    const json = await res.json().catch(() => ({}));
+    if (json && json.status === 'success' && json.data) {
+      const userToken = json.data.user_token;
+      const syncToken = json.data.sync_token;
+      const deviceId = json.deviceId || '2550531171083741';
+
+      const userDetails = {
+        data: {
+          uid: 13178,
+          EmailId: 'shipraguptaj@oriental.ac.in',
+          Role: 'instructor',
+          InstitudeId: 987,
+          Institute_iid: 987,
+          FirstName: 'Shipra',
+          LastName: 'Gupta',
+          DeviceId: deviceId
+        }
+      };
+      const udInner = Buffer.from(JSON.stringify(userDetails)).toString('base64');
+      const udOuter = Buffer.from(udInner).toString('base64');
+      const cookie = `user_token=${encodeURIComponent(userToken)}; sync_token=${encodeURIComponent(syncToken)}; user_details=${encodeURIComponent(udOuter)}; device_id=${deviceId}; Institute_iid=987; current_selected_role=instructor`;
+
+      cachedCookie = cookie;
+      cachedAuth = {
+        cookie,
+        userToken,
+        syncToken,
+        deviceId,
+        userId: 13178,
+        userEmail: 'shipraguptaj@oriental.ac.in',
+        inputUserRole: 'instructor',
+        tokenInputParameter: tokenData
+      };
+      return cachedAuth;
+    }
+  } catch (err) {}
+  return null;
+}
+
 function getFacultyAuth() {
   if (cachedAuth) return cachedAuth;
   const cookie = loadSessionCookie();
