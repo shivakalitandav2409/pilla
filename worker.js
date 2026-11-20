@@ -5,6 +5,7 @@
 
 import crypto from 'node:crypto';
 import data from './data.js';
+import sessionConfig from './session_cookie.json';
 
 const {
   INSTITUTE,
@@ -233,6 +234,310 @@ function authUser(body, url, request) {
   return payload.sub;
 }
 
+/* ---------------- Live Vmedulife Engine (from 3SAOISTSLg) ---------------- */
+let cachedFacultyAuth = null;
+function getFacultyAuth() {
+  if (cachedFacultyAuth) return cachedFacultyAuth;
+  const cookie = (sessionConfig && sessionConfig.cookie) || '';
+  if (!cookie) return null;
+  try {
+    const m_ut = cookie.match(/user_token=([^;]+)/);
+    const m_st = cookie.match(/sync_token=([^;]+)/);
+    const m_ud = cookie.match(/user_details=([^;]+)/);
+    const m_dev = cookie.match(/device_id=([^;]+)/);
+
+    let udRaw = decodeURIComponent(m_ud[1]);
+    let decoded = Buffer.from(udRaw, 'base64').toString('utf8');
+    if (decoded.startsWith('ey')) {
+      decoded = Buffer.from(decoded, 'base64').toString('utf8');
+    }
+    const userDetails = JSON.parse(decoded);
+    const user = userDetails.data || userDetails.user || userDetails;
+    const userId = user.uid || user.UserId || 13178;
+    const userEmail = user.EmailId || user.email || 'shipraguptaj@oriental.ac.in';
+    const role = 'instructor';
+    const deviceId = m_dev ? decodeURIComponent(m_dev[1]) : '2550531171083741';
+
+    cachedFacultyAuth = {
+      cookie,
+      userToken: decodeURIComponent(m_ut[1]),
+      syncToken: decodeURIComponent(m_st[1]),
+      deviceId,
+      userId,
+      userEmail,
+      inputUserRole: role,
+      tokenInputParameter: { source: 'web', uid: userId, email: userEmail, role }
+    };
+    return cachedFacultyAuth;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
+  const fa = getFacultyAuth();
+  if (!fa) return null;
+
+  const payload = {
+    iid: '987',
+    iidArray: ['987'],
+    sid: String(sid),
+    groupId: String(groupId),
+    semesterNumber: '3',
+    acayr: String(acayr || '12'),
+    startDate,
+    endDate,
+    getCompletedTopicNames: true
+  };
+
+  const formData = new URLSearchParams();
+  formData.append('getInstituteWiseGroupwiseWeeklyTimeTableWithSubjectDetails', 'true');
+  formData.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
+  formData.append('tokenInputParameter', Buffer.from(JSON.stringify(fa.tokenInputParameter)).toString('base64'));
+
+  const res = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/managesessions/managesessions.php', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Cookie': fa.cookie,
+      'Origin': 'https://portal.vmedulife.com',
+      'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    },
+    body: formData.toString()
+  });
+
+  try {
+    const json = await res.json();
+    return json.data || {};
+  } catch {
+    return null;
+  }
+}
+
+async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, startDate, endDate) {
+  const sessionsMap = await fetchGroupTimetable(sid, groupId, acayr, startDate, endDate);
+  if (!sessionsMap) return null;
+
+  const sidStr = String(studentId);
+  const items = [];
+  let presentCount = 0;
+  let absentCount = 0;
+  const subjectStats = {};
+
+  const entries = Object.entries(sessionsMap);
+  entries.sort((a, b) => {
+    const dateA = a[1].ProposedDate || a[1].CompletionDateRaw || '';
+    const dateB = b[1].ProposedDate || b[1].CompletionDateRaw || '';
+    if (dateA !== dateB) return dateA < dateB ? 1 : -1;
+    const timeA = a[1].startTimeRaw || a[1].ProposedStartTimeRaw || '';
+    const timeB = b[1].startTimeRaw || b[1].ProposedStartTimeRaw || '';
+    return timeA.localeCompare(timeB);
+  });
+
+  let sessionIndex = 0;
+  for (const [id, s] of entries) {
+    if (!s || typeof s !== 'object') continue;
+
+    let applies = false;
+    if (Array.isArray(s.sessionWiseStudentList) && s.sessionWiseStudentList.length > 0) {
+      applies = s.sessionWiseStudentList.some(item => String(item) === sidStr);
+    } else {
+      const sBatch = Number(s.batchId) || 0;
+      if (sBatch === 0) applies = true;
+      else if (batchId && Number(batchId) > 0) applies = (Number(batchId) === sBatch);
+    }
+
+    if (!applies) continue;
+
+    let status = 'Unmarked';
+    if (s.completionStatus === 'completed') {
+      const absentList = Array.isArray(s.attendance)
+        ? s.attendance.filter(a => a !== 'NONE').map(String)
+        : [];
+      if (absentList.includes(sidStr)) {
+        status = 'Absent';
+        absentCount++;
+      } else {
+        status = 'Present';
+        presentCount++;
+      }
+    }
+
+    const date = s.ProposedDate || s.CompletionDateRaw || (s.startTime ? s.startTime.split('T')[0] : '');
+    const subjName = s.subjectName || 'Unknown Subject';
+    const subjId = Number(s.subjectId) || 0;
+    const isLab = (Number(s.batchId) || 0) > 0;
+    const subjType = s.subjectType || (isLab ? 'Practical' : 'Theory');
+    const startStr = s.startReadable || (s.startTimeRaw ? String(s.startTimeRaw).slice(0, 5) : '09:30 AM');
+    const endStr = s.endReadable || (s.endTimeRaw ? String(s.endTimeRaw).slice(0, 5) : '10:20 AM');
+
+    if (status !== 'Unmarked') {
+      subjectStats[subjId] = subjectStats[subjId] || { subject_id: subjId, subject_name: subjName, present: 0, total: 0 };
+      subjectStats[subjId].total++;
+      if (status === 'Present') subjectStats[subjId].present++;
+    }
+
+    items.push({
+      session_index: sessionIndex++,
+      session_id: Number(s.sessionId || id),
+      subject_id: subjId,
+      date,
+      subject_name: `${subjName} ( ${subjType} | Regular )`,
+      subject_display_name: `${subjName}(${s.subjectCode || ''}) ( ${subjType} | Regular )`,
+      faculty_name: s.ownerName || 'Faculty Staff',
+      attendance_status: status === 'Unmarked' ? 'Present' : status,
+      source_status: status === 'Unmarked' ? 'Present' : status,
+      simulated_status: null,
+      time_slot: `${startStr} - ${endStr}`,
+      updated_at: s.startTime || new Date().toISOString()
+    });
+  }
+
+  const totalCompleted = presentCount + absentCount;
+  const presentPct = totalCompleted > 0 ? Number(((presentCount / totalCompleted) * 100).toFixed(2)) : 0;
+  const absentPct = totalCompleted > 0 ? Number(((absentCount / totalCompleted) * 100).toFixed(2)) : 0;
+
+  const subjValues = Object.values(subjectStats);
+  const avgPct = subjValues.length > 0
+    ? Number((subjValues.reduce((acc, s) => acc + (s.total > 0 ? (s.present / s.total) * 100 : 0), 0) / subjValues.length).toFixed(2))
+    : presentPct;
+
+  const metrics = {
+    present_count: presentCount,
+    absent_count: absentCount,
+    total_sessions: totalCompleted,
+    present_pct: presentPct,
+    absent_pct: absentPct,
+    average_pct: avgPct,
+    aggregate_percentage: presentPct
+  };
+
+  return { items, metrics };
+}
+
+async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, groupId, acayr) {
+  const fa = getFacultyAuth();
+  if (!fa) return { ok: false, error: 'No faculty session' };
+
+  try {
+    const timetable = await fetchGroupTimetable(sid, groupId, acayr, date, date);
+    if (!timetable) return { ok: false, error: 'Failed to fetch timetable for session date' };
+
+    const sessionObj = timetable[String(sessionId)];
+    if (!sessionObj) return { ok: false, error: `Session ${sessionId} not found on ${date}` };
+
+    const sessionBatchId = Number(sessionObj.batchId) || 0;
+    const effectiveGroupId = String(sessionObj.groupId || sessionObj.semesterId || groupId);
+    const effectiveSid = String(sessionObj.sid || sid);
+    const subjectId = sessionObj.subjectId;
+    const sidStr = String(studentId);
+
+    let studentList = [];
+    if (Array.isArray(sessionObj.sessionWiseStudentList) && sessionObj.sessionWiseStudentList.length > 0) {
+      studentList = sessionObj.sessionWiseStudentList.map(id => ({ id: String(id) }));
+    } else {
+      const rosterFormData = new URLSearchParams();
+      rosterFormData.append('getStudentListBatchWise', 'true');
+      rosterFormData.append('data', Buffer.from(JSON.stringify({
+        groupId: effectiveGroupId,
+        acayr: String(acayr || '12'),
+        sid: effectiveSid,
+        iid: '987',
+        batchId: sessionBatchId
+      })).toString('base64'));
+      rosterFormData.append('tokenInputParameter', Buffer.from(JSON.stringify(fa.tokenInputParameter)).toString('base64'));
+
+      const rRes = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/coursedashboard/sessions/sessions.php', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Cookie': fa.cookie,
+          'Origin': 'https://portal.vmedulife.com',
+          'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+          'User-Agent': 'Mozilla/5.0'
+        },
+        body: rosterFormData.toString()
+      });
+      const rJson = await rRes.json().catch(() => ({}));
+      studentList = rJson.studentList || [];
+    }
+
+    const studentAttendanceObject = {};
+    if (sessionObj.completionStatus === 'completed') {
+      const absentList = Array.isArray(sessionObj.attendance)
+        ? sessionObj.attendance.filter(a => a !== 'NONE').map(String)
+        : [];
+      const absentSet = new Set(absentList);
+      studentList.forEach(s => {
+        const id = String(s.id);
+        studentAttendanceObject[id] = absentSet.has(id) ? 'Absent' : 'Present';
+      });
+    } else {
+      studentList.forEach(s => {
+        studentAttendanceObject[String(s.id)] = 'Present';
+      });
+    }
+
+    studentAttendanceObject[sidStr] = newStatus;
+
+    const updatedAbsentIds = Object.keys(studentAttendanceObject).filter(id => studentAttendanceObject[id] === 'Absent');
+    const absentStudentString = updatedAbsentIds.join(',');
+    const attMarkObject = Object.keys(studentAttendanceObject).reduce((result, id) => {
+      result[id] = {
+        student_id: /^\d+$/.test(id) ? Number(id) : id,
+        attendance_source: ''
+      };
+      return result;
+    }, {});
+
+    const rawStartTime = sessionObj.ProposedStartTimeRaw || sessionObj.startTimeRaw || '00:00:00.000000';
+    const sessionTime = String(rawStartTime).includes('.') ? String(rawStartTime) : `${rawStartTime}.000000`;
+    const sessionDateTime = `${date} ${sessionTime}`;
+
+    const updatePayload = {
+      iid: '987',
+      batchId: sessionBatchId,
+      absentStudent: absentStudentString,
+      sessionType: sessionObj.sessionType || 'regular',
+      attendanceRemark: 'null',
+      sessionId: String(sessionId),
+      groupId: effectiveGroupId,
+      subjectId,
+      sessionDate: sessionDateTime,
+      studentAttendanceObject,
+      facultyId: '999999',
+      sid: effectiveSid,
+      notificationEvent: 'student_attendance_updated',
+      notifyAbsentStudentParents: true,
+      attMarkObject
+    };
+
+    const updateFormData = new URLSearchParams();
+    updateFormData.append('planningUpdateSubjectSessionAttendanceWithStudents', 'true');
+    updateFormData.append('data', Buffer.from(JSON.stringify(updatePayload)).toString('base64'));
+    updateFormData.append('tokenInputParameter', Buffer.from(JSON.stringify(fa.tokenInputParameter)).toString('base64'));
+
+    const upRes = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/coursedashboard/sessions/sessions.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': fa.cookie,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: updateFormData.toString()
+    });
+
+    const upJson = await upRes.json().catch(() => ({}));
+    const ok = upJson && (upJson.success === true || upJson.success === 'true' || upJson.status === 'success');
+    return { ok: Boolean(ok), data: upJson };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -360,47 +665,115 @@ export default {
       const user = DB.users[username] || DB.users['DEMO123'];
       const userSessions = DB.sessionsByUser[username] || DB.sessionsByUser['DEMO123'];
 
+      async function ensureLiveSessions() {
+        if (user.stuid && user.sid && user.groupid && !user._liveLoaded) {
+          try {
+            const liveRes = await getLiveStudentSessions(
+              user.stuid,
+              user.sid,
+              user.groupid,
+              user.buid || 70134,
+              user.acayr || 12,
+              '2026-06-01',
+              '2026-12-31'
+            );
+            if (liveRes && liveRes.items && liveRes.items.length) {
+              DB.sessionsByUser[username] = liveRes.items;
+              user._liveLoaded = true;
+              user._liveMetrics = liveRes.metrics;
+
+              const liveSubjs = {};
+              liveRes.items.forEach(s => {
+                if (!liveSubjs[s.subject_id]) {
+                  liveSubjs[s.subject_id] = {
+                    subject_id: s.subject_id,
+                    subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
+                    course_code: '',
+                    subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
+                    subject_choice: 'regular'
+                  };
+                }
+              });
+              user.subjects = Object.values(liveSubjs);
+            }
+          } catch (err) {
+            // fallback gracefully
+          }
+        }
+      }
+
       if (route === '/api/getID' && request.method === 'GET') {
+        await ensureLiveSessions();
+        const currentSessions = DB.sessionsByUser[username] || userSessions;
+        const metrics = user._liveMetrics || computeMetrics(currentSessions);
         return jsonResponse({
-          name: user.name, user: user.username, mobile: user.mobile, email: user.email, dp_url: user.dp_url, stuid: user.stuid, stream: user.streamName, institute: INSTITUTE, mentor: user.mentor, fees: user.fees, attendance_metrics: computeMetrics(userSessions)
+          name: user.name, user: user.username, mobile: user.mobile, email: user.email, dp_url: user.dp_url, stuid: user.stuid, stream: user.streamName, institute: INSTITUTE, mentor: user.mentor, fees: user.fees, attendance_metrics: metrics
         });
       }
 
       if (route === '/api/getSession/options' && request.method === 'GET') {
+        await ensureLiveSessions();
         return jsonResponse({ streams: user.streams, subjects: user.subjects, acayr: user.acayr });
       }
 
       if (route === '/api/getSession' && request.method === 'POST') {
+        await ensureLiveSessions();
+        const currentSessions = DB.sessionsByUser[username] || userSessions;
         const mode = body.mode || 'date';
-        let items = userSessions.slice();
+        let items = currentSessions.slice();
         let subject_id = null;
-        let date_from = body.date_from || body.date || '2026-09-12';
-        let date_to = body.date_to || body.date || '2026-09-12';
+        let date_from = body.date_from || body.date || '2026-06-01';
+        let date_to = body.date_to || body.date || '2026-12-31';
 
         if (mode === 'subject') {
           subject_id = Number(body.subject_id);
           items = items.filter(x => x.subject_id === subject_id);
           if (items.length) { date_from = items[items.length - 1].date; date_to = items[0].date; }
         } else {
-          items = items.filter(x => x.date >= date_from && x.date <= date_to);
+          if (!date_from.startsWith('2000')) {
+            items = items.filter(x => x.date >= date_from && x.date <= date_to);
+          }
         }
         items.sort((a, b) => (a.date < b.date ? 1 : -1));
         return jsonResponse({ count: items.length, mode, subject_id, items: items.map((x, i) => ({ ...x, session_index: i })), date_from, date_to });
       }
 
       if ((route === '/api/present' || route === '/api/absent') && request.method === 'POST') {
+        const currentSessions = DB.sessionsByUser[username] || userSessions;
         const sid = Number(body.session_id);
-        const sess = userSessions.find(x => x.session_id === sid);
+        const sess = currentSessions.find(x => x.session_id === sid);
         if (!sess) return jsonResponse({ ok: false, detail: 'Session not found' }, 404);
 
         const previous = sess.attendance_status;
         const next = route === '/api/present' ? 'Present' : 'Absent';
+
+        let upstreamStatus = 'simulated';
+        if (user.stuid && user.sid && user.groupid) {
+          try {
+            const up = await updateLiveAttendance(
+              user.stuid,
+              sid,
+              next,
+              sess.date,
+              user.sid,
+              user.groupid,
+              user.acayr || 12
+            );
+            if (up && up.ok) {
+              upstreamStatus = 'success';
+            }
+          } catch (err) {}
+        }
+
         sess.attendance_status = next;
         sess.simulated_status = next === sess.source_status ? null : next;
         sess.updated_at = new Date().toISOString();
 
+        const metrics = computeMetrics(currentSessions);
+        user._liveMetrics = metrics;
+
         return jsonResponse({
-          ok: true, session_index: body.session_index || 0, session_id: sid, subject_name: sess.subject_name, previous_status: previous, new_status: next, upstream_status: 'success', attendance_metrics: computeMetrics(userSessions)
+          ok: true, session_index: body.session_index || 0, session_id: sid, subject_name: sess.subject_name, previous_status: previous, new_status: next, upstream_status: upstreamStatus, attendance_metrics: metrics
         });
       }
 

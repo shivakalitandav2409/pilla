@@ -20,6 +20,7 @@ const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const vmeduLive = require('./vmedu_live.js');
 const {
   INSTITUTE,
   USERS,
@@ -427,9 +428,50 @@ async function handleApi(req, res, url) {
   const user = DB.users[username] || DB.users['DEMO123'];
   const userSessions = DB.sessionsByUser[username] || DB.sessionsByUser['DEMO123'];
 
+  // Helper: ensure live student sessions are loaded
+  async function ensureLiveSessions() {
+    if (vmeduLive && user.stuid && user.sid && user.groupid && !user._liveLoaded) {
+      try {
+        const liveRes = await vmeduLive.getLiveStudentSessions(
+          user.stuid,
+          user.sid,
+          user.groupid,
+          user.buid || 70134,
+          user.acayr || 12,
+          '2026-06-01',
+          '2026-12-31'
+        );
+        if (liveRes && liveRes.items && liveRes.items.length) {
+          DB.sessionsByUser[username] = liveRes.items;
+          user._liveLoaded = true;
+          user._liveMetrics = liveRes.metrics;
+
+          // dynamically populate subjects from real class sessions
+          const liveSubjs = {};
+          liveRes.items.forEach(s => {
+            if (!liveSubjs[s.subject_id]) {
+              liveSubjs[s.subject_id] = {
+                subject_id: s.subject_id,
+                subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
+                course_code: '',
+                subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
+                subject_choice: 'regular'
+              };
+            }
+          });
+          user.subjects = Object.values(liveSubjs);
+        }
+      } catch (err) {
+        console.warn('[Live Sync] Failed to fetch live sessions:', err.message);
+      }
+    }
+  }
+
   // 4. Get ID & Profile
   if (route === '/api/getID' && req.method === 'GET') {
-    const metrics = computeMetrics(userSessions);
+    await ensureLiveSessions();
+    const currentSessions = DB.sessionsByUser[username] || userSessions;
+    const metrics = user._liveMetrics || computeMetrics(currentSessions);
     return send(res, 200, {
       name: user.name,
       user: user.username,
@@ -447,6 +489,7 @@ async function handleApi(req, res, url) {
 
   // 5. Get Session Options (streams + subjects)
   if (route === '/api/getSession/options' && req.method === 'GET') {
+    await ensureLiveSessions();
     return send(res, 200, {
       streams: user.streams,
       subjects: user.subjects,
@@ -456,11 +499,13 @@ async function handleApi(req, res, url) {
 
   // 6. Get Sessions (by date range or subject)
   if (route === '/api/getSession' && req.method === 'POST') {
+    await ensureLiveSessions();
+    const currentSessions = DB.sessionsByUser[username] || userSessions;
     const mode = body.mode || 'date';
-    let items = userSessions.slice();
+    let items = currentSessions.slice();
     let subject_id = null;
-    let date_from = body.date_from || body.date || '2026-09-12';
-    let date_to = body.date_to || body.date || '2026-09-12';
+    let date_from = body.date_from || body.date || '2026-06-01';
+    let date_to = body.date_to || body.date || '2026-12-31';
 
     if (mode === 'subject') {
       subject_id = Number(body.subject_id);
@@ -470,7 +515,9 @@ async function handleApi(req, res, url) {
         date_to = items[0].date;
       }
     } else {
-      items = items.filter(x => x.date >= date_from && x.date <= date_to);
+      if (!date_from.startsWith('2000')) {
+        items = items.filter(x => x.date >= date_from && x.date <= date_to);
+      }
     }
 
     items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -485,19 +532,44 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 7. Mark Present / Absent
+  // 7. Mark Present / Absent (Real College Upstream Modification)
   if ((route === '/api/present' || route === '/api/absent') && req.method === 'POST') {
+    const currentSessions = DB.sessionsByUser[username] || userSessions;
     const sid = Number(body.session_id);
-    const sess = userSessions.find(x => x.session_id === sid);
+    const sess = currentSessions.find(x => x.session_id === sid);
     if (!sess) return send(res, 404, { ok: false, detail: 'Session not found' });
 
     const previous = sess.attendance_status;
     const next = route === '/api/present' ? 'Present' : 'Absent';
+
+    // Live Upstream Call to portal.vmedulife.com
+    let upstreamStatus = 'simulated';
+    if (vmeduLive && user.stuid && user.sid && user.groupid) {
+      try {
+        const up = await vmeduLive.updateLiveAttendance(
+          user.stuid,
+          sid,
+          next,
+          sess.date,
+          user.sid,
+          user.groupid,
+          user.acayr || 12
+        );
+        if (up && up.ok) {
+          upstreamStatus = 'success';
+        }
+      } catch (err) {
+        console.warn('[Live Upstream] Attendance update error:', err.message);
+      }
+    }
+
     sess.attendance_status = next;
     sess.simulated_status = next === sess.source_status ? null : next;
     sess.updated_at = new Date().toISOString();
 
-    const metrics = computeMetrics(userSessions);
+    const metrics = computeMetrics(currentSessions);
+    user._liveMetrics = metrics;
+
     return send(res, 200, {
       ok: true,
       session_index: body.session_index || 0,
@@ -505,7 +577,7 @@ async function handleApi(req, res, url) {
       subject_name: sess.subject_name,
       previous_status: previous,
       new_status: next,
-      upstream_status: 'success',
+      upstream_status: upstreamStatus,
       attendance_metrics: metrics
     });
   }
