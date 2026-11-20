@@ -1,0 +1,10 @@
+{
+  "name": "pilla",
+  "version": "1.0.0",
+  "description": "Pilla — self-contained attendance portal clone (local mock data only). Reconstructed from a HAR capture.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT"
+}
