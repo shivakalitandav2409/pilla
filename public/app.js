@@ -843,22 +843,30 @@ async function openQuizModal(examId, title, subj, isReview = false) {
 
 function renderQuizQuestions(questions) {
   state.quizAnswers = {};
-  $('#quizQuestionsList').innerHTML = questions.map((q, idx) => `
+  $('#quizQuestionsList').innerHTML = questions.map((q, idx) => {
+    const correctId = q.correctAnswerId;
+    if (correctId) {
+      state.quizAnswers[q.qid] = correctId;
+    }
+    return `
     <div class="q-item" data-qid="${esc(q.qid)}">
       <div class="q-title">
         <span class="q-num">Q${idx + 1}.</span>
         <span>${esc(q.text)}</span>
       </div>
       <div class="q-options">
-        ${q.answers.map(a => `
-          <label class="q-opt" data-qid="${esc(q.qid)}" data-aid="${esc(a.id)}">
-            <input type="radio" name="q_${esc(q.qid)}" value="${esc(a.id)}" />
+        ${q.answers.map(a => {
+          const isSelected = String(a.id) === String(correctId);
+          return `
+          <label class="q-opt ${isSelected ? 'selected' : ''}" data-qid="${esc(q.qid)}" data-aid="${esc(a.id)}">
+            <input type="radio" name="q_${esc(q.qid)}" value="${esc(a.id)}" ${isSelected ? 'checked="checked"' : ''} />
             <span>${esc(a.text)}</span>
+            ${isSelected ? '<span class="auto-selected-badge">✓ Auto-selected</span>' : ''}
           </label>
-        `).join('')}
+        `;}).join('')}
       </div>
     </div>
-  `).join('');
+  `;}).join('');
 
   $$('.q-opt input[type="radio"]').forEach(radio => {
     radio.addEventListener('change', () => {
@@ -877,7 +885,7 @@ function renderQuizQuestions(questions) {
 
 function startQuizTimer() {
   clearInterval(state.quizTimer);
-  state.quizSecondsLeft = 1800; // 30 minutes
+  state.quizSecondsLeft = 180; // Default: 3 minutes
   updateTimerDisplay();
   state.quizTimer = setInterval(() => {
     state.quizSecondsLeft--;
@@ -889,11 +897,25 @@ function startQuizTimer() {
   }, 1000);
 }
 
+function adjustQuizTimer(deltaSeconds) {
+  state.quizSecondsLeft = Math.max(10, state.quizSecondsLeft + deltaSeconds);
+  updateTimerDisplay();
+  const m = Math.floor(state.quizSecondsLeft / 60);
+  const s = state.quizSecondsLeft % 60;
+  toast(`⏱️ Timer adjusted: ${m}m ${s}s`);
+}
+
 function updateTimerDisplay() {
   const m = Math.floor(state.quizSecondsLeft / 60);
   const s = state.quizSecondsLeft % 60;
   $('#quizTimer').textContent = `⏱️ ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
+
+// Timer adjustment click listeners
+$('#timerMinusBtn')?.addEventListener('click', () => adjustQuizTimer(-60));
+$('#timerPlusBtn')?.addEventListener('click', () => adjustQuizTimer(60));
+$('#timerFootMinusBtn')?.addEventListener('click', () => adjustQuizTimer(-60));
+$('#timerFootPlusBtn')?.addEventListener('click', () => adjustQuizTimer(60));
 
 $('#submitQuizBtn').addEventListener('click', submitQuiz);
 

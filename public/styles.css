@@ -539,3 +539,65 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
   background: #252a38;
   border-color: var(--accent);
 }
+
+
+/* ================= QUIZ TIMER ADJUSTMENT CONTROLS ================= */
+.timer-control-group {
+  display: inline-flex;
+  align-items: center;
+  background: #141722;
+  border: 1px solid var(--line2);
+  border-radius: 20px;
+  padding: 2px 6px;
+  gap: 4px;
+}
+.timer-ctrl-btn {
+  background: var(--surface2);
+  color: #a5b4fc;
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.timer-ctrl-btn:hover {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+.timer-pill-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.timer-pill-btn {
+  background: #181b24;
+  color: var(--text-dim);
+  border: 1px solid var(--line2);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: .75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.timer-pill-btn:hover {
+  background: var(--surface2);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+.auto-selected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(16,185,129,.16);
+  border: 1px solid rgba(16,185,129,.3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  margin-left: auto;
+}

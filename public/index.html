@@ -247,7 +247,11 @@
           <h2 id="quizTitle">unit 2 — Stack and Queue</h2>
           <p id="quizSub" class="muted">DATA STRUCTURE · Theory</p>
         </div>
-        <div class="quiz-timer" id="quizTimer">⏱️ 30:00</div>
+        <div class="timer-control-group">
+          <button type="button" class="timer-ctrl-btn" id="timerMinusBtn" title="Decrease timer by 1 minute">− 1m</button>
+          <div class="quiz-timer" id="quizTimer">⏱️ 03:00</div>
+          <button type="button" class="timer-ctrl-btn" id="timerPlusBtn" title="Increase timer by 1 minute">+ 1m</button>
+        </div>
         <button id="closeQuizBtn" class="modal-close">&times;</button>
       </div>
 
@@ -271,7 +275,14 @@
       </div>
 
       <div class="modal-foot" id="quizFoot">
-        <span class="auto-save-pill" id="autoSaveStatus">● Autosave active</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span class="auto-save-pill" id="autoSaveStatus">● Autosave active</span>
+          <div class="timer-pill-group">
+            <span class="muted" style="font-size:.78rem;">Timer:</span>
+            <button type="button" class="timer-pill-btn" id="timerFootMinusBtn" title="Decrease timer by 1 min">− 1 min</button>
+            <button type="button" class="timer-pill-btn" id="timerFootPlusBtn" title="Increase timer by 1 min">+ 1 min</button>
+          </div>
+        </div>
         <button id="submitQuizBtn" class="btn-primary">Submit Examination</button>
       </div>
     </div>
