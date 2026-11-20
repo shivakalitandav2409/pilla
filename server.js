@@ -319,66 +319,65 @@ async function handleApi(req, res, url) {
       return send(res, 400, { detail: 'Username and password required' });
     }
 
-    let user = DB.users[username];
+    let user = null;
     let isAuthenticated = false;
 
-    // A. Check local database first
-    if (user && user.password === password) {
+    // A. Live verification with portal.vmedulife.com first for fresh records
+    const live = await liveAuthenticate(username, password);
+    if (live.ok && live.data) {
       isAuthenticated = true;
-    } else {
-      // B. Live verification with portal.vmedulife.com (dynamic multi-student support)
-      const live = await liveAuthenticate(username, password);
-      if (live.ok && live.data) {
-        isAuthenticated = true;
-        const s = live.data.studentData;
-        const group = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
-        const streamName = group.streamname || 'B. Tech';
-        const sid = Number(group.streamid) || 1084;
-        const groupid = Number(group.gid) || 101182;
+      const s = live.data.studentData;
+      const group = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
+      const streamName = group.streamname || 'B. Tech';
+      const sid = Number(group.streamid) || 1084;
+      const groupid = Number(group.gid) || 101182;
+      const templateUser = USERS[username] || (sid === 1075 ? USERS['STOIST251161'] : USERS['STOIST25963']);
+      const matchingSubjects = templateUser ? templateUser.subjects : USERS['STOIST25963'].subjects;
 
-        const matchingSubjects = sid === 1075 ? USERS['STOIST251161'].subjects : USERS['STOIST25963'].subjects;
-
-        user = {
-          username: username,
-          password: password,
-          name: `${s.FirstName} ${s.LastName}`.trim(),
-          mobile: s.MobileNumber || '',
-          email: s.EmailId || '',
-          dp_url: s.UserDp || '',
-          stuid: String(s.stuid || ''),
-          streamName: streamName,
-          sid: sid,
-          groupid: groupid,
-          acayr: Number(s.Acayear) || 12,
-          mentor: sid === 1075 ? USERS['STOIST251161'].mentor : USERS['STOIST25963'].mentor,
-          fees: {
-            totalAmount: 63500,
-            paid: 63500,
-            balance: 0,
-            percentage: 100,
-            status: "Fully Paid"
-          },
-          streams: [
-            { sid: sid, groupid: null, name: streamName },
-            { sid: sid, groupid: groupid, name: null }
-          ],
-          subjects: matchingSubjects,
-          targetMetrics: {
-            present_count: 38,
-            absent_count: 30,
-            total_sessions: 68,
-            present_pct: 55.88,
-            absent_pct: 44.12,
-            average_pct: 58.99
-          }
-        };
-
-        // Cache new student into DB
-        DB.users[username] = user;
-        if (!DB.sessionsByUser[username]) {
-          DB.sessionsByUser[username] = seedSessionsForUser(user);
+      user = {
+        username: username,
+        password: password,
+        name: `${s.FirstName} ${s.LastName}`.trim(),
+        mobile: s.MobileNumber || '',
+        email: s.EmailId || '',
+        dp_url: s.UserDp || (templateUser && templateUser.dp_url) || '',
+        stuid: String(s.stuid || ''),
+        streamName: streamName,
+        sid: sid,
+        groupid: groupid,
+        acayr: Number(s.Acayear) || 12,
+        mentor: templateUser ? templateUser.mentor : USERS['STOIST25963'].mentor,
+        fees: {
+          totalAmount: 63500,
+          paid: 63500,
+          balance: 0,
+          percentage: 100,
+          status: "Fully Paid"
+        },
+        streams: [
+          { sid: sid, groupid: null, name: streamName },
+          { sid: sid, groupid: groupid, name: null }
+        ],
+        subjects: matchingSubjects,
+        capturedSessions: templateUser ? templateUser.capturedSessions : [],
+        targetMetrics: templateUser ? templateUser.targetMetrics : {
+          present_count: 38,
+          absent_count: 30,
+          total_sessions: 68,
+          present_pct: 55.88,
+          absent_pct: 44.12,
+          average_pct: 58.99
         }
+      };
+
+      DB.users[username] = user;
+      if (!DB.sessionsByUser[username]) {
+        DB.sessionsByUser[username] = seedSessionsForUser(user);
       }
+    } else if (DB.users[username] && DB.users[username].password === password) {
+      // B. Fallback to cached/pre-seeded user if offline
+      isAuthenticated = true;
+      user = DB.users[username];
     }
 
     if (isAuthenticated) {

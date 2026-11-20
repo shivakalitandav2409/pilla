@@ -135,9 +135,15 @@ async function enterApp() {
     loadNotifications()
   ]);
 
-  // Default date range: September 2026 HAR dates
-  $('#dateFrom').value = '2026-09-01';
-  $('#dateTo').value = '2026-09-15';
+  // Default date range: span of student sessions
+  if (state.allSessions.length) {
+    const dates = state.allSessions.map(s => s.date).sort();
+    $('#dateFrom').value = dates[0];
+    $('#dateTo').value = dates[dates.length - 1];
+  } else {
+    $('#dateFrom').value = '2000-01-01';
+    $('#dateTo').value = '2099-12-31';
+  }
 
   renderDashboard();
   switchView('dashboard');
