@@ -649,15 +649,26 @@ function renderAssignments(filter = 'all') {
         <div>
           <div class="ass-top">
             <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
-              ${esc(a.subject_name)}
+              ${esc(a.subject_name)} ${a.batchName ? `· ${esc(a.batchName)}` : ''}
             </span>
             <span class="ass-status ${isComp ? 'completed' : 'pending'}">${esc(a.status)}</span>
           </div>
           <h3 class="ass-title">${esc(a.title)}</h3>
           <div class="ass-meta">
-            <span>📅 Due Date: <b>${esc(a.due_date)}</b></span>
-            <span>🎯 Max Marks: <b>${esc(a.marks)}</b></span>
+            <span>📅 Assigned: <b>${esc(a.displayStartDate || a.startDate || 'Recorded')}</b></span>
+            <span>⏰ Due Date: <b style="color:#ffffff;">${esc(a.displayEndDate || a.due_date)}</b></span>
+            <span>🎯 Total Marks: <b>${esc(a.marks)}</b></span>
+            ${a.facultyName ? `<span>👤 Faculty: <b>${esc(a.facultyName)}</b></span>` : ''}
+            ${a.obtainedMarks !== null && a.obtainedMarks !== undefined ? `
+              <span style="color:var(--green);font-weight:700;">⭐ Obtained Score: ${a.obtainedMarks} / ${a.marks} (${esc(a.evaluation || 'Graded')})</span>
+            ` : ''}
+            ${a.instructorAttachment ? `<span>📎 Ref Attachment: <b style="color:var(--accent);">${esc(a.instructorAttachment)}</b></span>` : ''}
           </div>
+          ${a.instruction ? `
+            <div style="font-size:.8rem;color:var(--muted);background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:6px;margin:8px 0;border-left:2px solid var(--accent);">
+              ℹ️ ${esc(a.instruction)}
+            </div>
+          ` : ''}
 
           ${!isComp ? `
             <div class="ass-upload-box" id="assBox_${a.id}">
@@ -861,7 +872,11 @@ function renderExams(filter = 'all') {
   $('#examsList').innerHTML = list.map(e => {
     const isComp = e.completionStatus === '1';
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
-    const formattedSubAt = e.submittedAt ? new Date(e.submittedAt).toLocaleString() : '';
+    const formattedSubAt = e.submittedAt 
+      ? (isNaN(new Date(String(e.submittedAt).replace(' ', 'T')).getTime()) 
+          ? e.submittedAt 
+          : new Date(String(e.submittedAt).replace(' ', 'T')).toLocaleString()) 
+      : '';
 
     return `
       <div class="card exam-card">
@@ -1100,9 +1115,10 @@ async function submitQuiz() {
       ex.completionStatus = '1';
       ex.studentScore = res.score;
     }
-    await loadExams();
     saveExamLocally(state.currentExamId, res.score, state.quizAnswers, new Date().toISOString());
+    await loadExams();
     renderDashboardTasks();
+    renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
     toast(`Exam submitted successfully! Score: ${res.score}/${res.totalMarks}`);
   } catch (err) {
     toast(err.message || 'Submission failed', true);
