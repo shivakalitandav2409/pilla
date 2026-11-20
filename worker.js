@@ -778,9 +778,48 @@ export default {
         });
       }
 
-      if (route === '/api/getAssignments' && request.method === 'POST') {
+            if (route === '/api/getAssignments' && request.method === 'POST') {
         const items = DB.assignments;
         return jsonResponse({ count: items.length, pending_count: items.filter(a => a.status === 'Pending').length, completed_count: items.filter(a => a.status === 'Completed').length, assignments: items });
+      }
+
+      if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && request.method === 'POST') {
+        const aid = Number(body.assignment_id || body.assignmentId);
+        const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
+        const fileData = body.file_data || body.fileData || '';
+        const remarks = body.remarks || 'Submitted via portal';
+
+        const a = DB.assignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+        if (!a) {
+          return jsonResponse({ ok: false, detail: 'Assignment not found' }, 404);
+        }
+
+        a.status = 'Completed';
+        a.submitted_on = new Date().toISOString().slice(0, 10);
+        a.submitted_file = fileName;
+        a.remarks = remarks;
+
+        const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+        return jsonResponse({
+          ok: true,
+          success: true,
+          status: 'success',
+          message: 'Assignment submitted and verified successfully.',
+          assignment: a,
+          assignments: DB.assignments,
+          pending_count: pending,
+          completed_count: DB.assignments.length - pending
+        });
+      }
+
+      if ((route === '/api/student/assignments') && (request.method === 'GET' || request.method === 'POST')) {
+        const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+        return jsonResponse({
+          success: true,
+          data: DB.assignments,
+          assignments: DB.assignments,
+          pendingCount: pending
+        });
       }
 
       if (route === '/api/getExams' && request.method === 'POST') {
@@ -789,27 +828,189 @@ export default {
       }
 
       if (route === '/api/exam/questions') {
-        return jsonResponse({ examId: '125821', examName: 'unit 2', examSyllabus: 'stack And Queue', subjectName: 'DATA STRUCTURE', durationMinutes: 30, totalQuestions: DB.examQuestions.length, questions: DB.examQuestions });
+        const examId = String(body.exam_id || body.examId || url.searchParams.get('exam_id') || '125821');
+        const exam = DB.exams.find(e => String(e.examId) === examId);
+        const questions = (typeof getExamQuestions === 'function') 
+          ? getExamQuestions(examId, exam?.subjectName) 
+          : DB.examQuestions;
+
+        return jsonResponse({
+          examId,
+          examName: exam ? exam.examName : 'Unit Examination',
+          examSyllabus: exam ? exam.examSyllabus : 'Course Syllabus',
+          subjectName: exam ? exam.subjectName : 'DATA STRUCTURE',
+          durationMinutes: 30,
+          totalQuestions: questions.length,
+          questions: questions.map(q => ({
+            qid: q.qid,
+            marks: q.marks,
+            type: q.type,
+            text: q.text,
+            answers: q.answers,
+            correctAnswerId: q.correctAnswerId
+          }))
+        });
+      }
+
+      if (route === '/api/exam/start' && request.method === 'POST') {
+        return jsonResponse({
+          data: [],
+          success: 'true',
+          status: 'success',
+          message: 'Start time updated successfully.'
+        });
       }
 
       if (route === '/api/exam/submit' && request.method === 'POST') {
-        const answers = body.answers || {};
+        const examId = String(body.exam_id || body.examId || '125821');
+        const submissionType = body.submission_type || 'submit';
+        
+        let answers = body.answers || {};
+        if (typeof body.performance === 'string') {
+          try {
+            const perf = JSON.parse(body.performance);
+            if (Array.isArray(perf)) {
+              perf.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+            }
+          } catch {}
+        } else if (Array.isArray(body.performance)) {
+          body.performance.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+        }
+
+        const exam = DB.exams.find(e => String(e.examId) === examId);
+        const questions = (typeof getExamQuestions === 'function') 
+          ? getExamQuestions(examId, exam?.subjectName) 
+          : DB.examQuestions;
+
         let score = 0;
         const questionResults = [];
-        DB.examQuestions.forEach(q => {
+        questions.forEach((q, idx) => {
           const selected = answers[q.qid];
           const isCorrect = selected === q.correctAnswerId;
           if (isCorrect) score += q.marks;
-          questionResults.push({ qid: q.qid, selectedAnswerId: selected, correctAnswerId: q.correctAnswerId, isCorrect });
+          questionResults.push({
+            qIndex: idx + 1,
+            qid: q.qid,
+            qText: q.text,
+            selectedAnswerId: selected || null,
+            correctAnswerId: q.correctAnswerId,
+            isCorrect,
+            marksAwarded: isCorrect ? q.marks : 0
+          });
         });
-        const exam = DB.exams.find(e => e.examId === (body.exam_id || '125821'));
-        if (exam) exam.completionStatus = '1';
 
-        return jsonResponse({ success: true, status: 'success', message: 'Exam submitted successfully.', score, totalMarks: DB.examQuestions.length, percentage: Math.round((score / DB.examQuestions.length) * 100), questionResults });
+        if (submissionType === 'submit') {
+          if (exam) {
+            exam.completionStatus = '1';
+            exam.studentScore = score;
+            exam.submittedAnswers = answers;
+            exam.submittedAt = new Date().toISOString();
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          status: 'success',
+          message: submissionType === 'submit' ? 'Exam submitted successfully.' : 'Exam progress saved.',
+          submissionType,
+          score,
+          totalMarks: questions.length,
+          percentage: Math.round((score / questions.length) * 100),
+          questionResults
+        });
       }
 
       if (route === '/api/getNotifications') {
         return jsonResponse({ totalCount: DB.notifications.length, unReadMessageCount: DB.notifications.filter(n => !n.isRead).length, notifications: DB.notifications });
+      }
+
+      // Online Exam API contract from Test.har
+      if (route === '/api/instructor/onlineExam.php') {
+        const isGetList = body.getStudentGroupAndBatchwiseOnlineExams || body.getGroupwiseStudentAssignedOnlineExams;
+        const isQuestions = body.getStudentAssignedOnlineExamQuestionList;
+        const isStart = body.updateStudentOnlineExamStartTime;
+        const isSubmit = body.submitOnlineExam;
+
+        if (isQuestions || (body.examId && !isStart && !isSubmit && !isGetList)) {
+          const examId = String(body.examId || (body.data && body.data.examId) || '125821');
+          const exam = DB.exams.find(e => String(e.examId) === examId);
+          const questions = (typeof getExamQuestions === 'function') 
+            ? getExamQuestions(examId, exam?.subjectName) 
+            : DB.examQuestions;
+
+          const dataObj = {};
+          questions.forEach(q => {
+            dataObj[q.qid] = {
+              marks: String(q.marks),
+              shuffle_answers: '0',
+              question: {
+                qType: q.type,
+                qText: q.text,
+                qImage: '',
+                questionCustomType: '',
+                qImageHeight: '',
+                qImageWidth: ''
+              },
+              answers: q.answers.map(a => ({
+                aUID: a.id,
+                aText: a.text,
+                aImage: '',
+                answerImageHeight: '',
+                answerImageWidth: ''
+              }))
+            };
+          });
+          return jsonResponse({
+            data: dataObj,
+            isAutoSaved: 'false',
+            shuffleQid: '0',
+            currentServerDatetime: new Date().toISOString(),
+            success: 'true',
+            configurationFlag: '1',
+            configuration: { duration: 30, negative_marks: 0 },
+            status: 'success',
+            remainingTime: 1800
+          });
+        }
+
+        if (isStart) {
+          return jsonResponse({ data: [], success: 'true', status: 'success', message: 'Start time updated successfully.' });
+        }
+
+        if (isSubmit) {
+          const examId = String(body.examId || (body.data && body.data.examId) || '125821');
+          const exam = DB.exams.find(e => String(e.examId) === examId);
+          if (exam) exam.completionStatus = '1';
+          return jsonResponse({ success: 'true', status: 'success', message: 'Exam submitted successfully.' });
+        }
+
+        const examsObj = {};
+        DB.exams.forEach(e => { examsObj[e.examId] = e; });
+        return jsonResponse({ data: examsObj, success: 'true', totalCount: DB.exams.length });
+      }
+
+      if (route === '/api/webNotification/webNotification.php') {
+        return jsonResponse({ status: 'success', unReadMessageCount: 0, data: DB.notifications });
+      }
+
+      if (route === '/api/studentSummary/studentSummary.php') {
+        return jsonResponse({ success: 'true', data: [] });
+      }
+
+      if (route === '/api/mentoring/mentoring.php') {
+        return jsonResponse({ success: 'true', data: { mentorName: 'Prof. Shikha Shrivastava' } });
+      }
+
+      if (route === '/api/lms/lms.php') {
+        return jsonResponse({ success: 'true', data: [] });
+      }
+
+      if (route === '/api/notice/notice.php') {
+        return jsonResponse({ success: 'true', notices: [] });
+      }
+
+      if (route === '/api/event/postEvent.php') {
+        return jsonResponse({ success: 'true', events: [] });
       }
 
       return jsonResponse({ detail: 'Not found' }, 404);
