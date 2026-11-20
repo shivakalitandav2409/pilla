@@ -143,12 +143,20 @@
               <small class="tag-success">✓ 100% Cleared · Zero Balance</small>
             </div>
           </div>
-          <div class="card info-card">
-            <div class="ic-icon">📚</div>
+          <div class="card info-card" style="cursor: pointer;" data-view="exams">
+            <div class="ic-icon" style="background: rgba(99,102,241,.15); color: #818cf8;">★</div>
             <div class="ic-body">
-              <span class="ic-label">LMS Active Course</span>
-              <strong>Analysis of Raw Data</strong>
-              <small class="muted">Code: ZWZLG5WN · Approved</small>
+              <span class="ic-label">Online Examinations</span>
+              <strong id="dashExamStatus">8 Completed · 17 Scheduled</strong>
+              <small id="dashExamSub" class="tag-success">Click to view exams →</small>
+            </div>
+          </div>
+          <div class="card info-card" style="cursor: pointer;" data-view="assignments">
+            <div class="ic-icon" style="background: rgba(16,185,129,.15); color: #34d399;">✎</div>
+            <div class="ic-body">
+              <span class="ic-label">Coursework Assignments</span>
+              <strong id="dashAssStatus">5 Completed · 4 Action Required</strong>
+              <small id="dashAssSub" class="muted">Click to view coursework →</small>
             </div>
           </div>
         </div>

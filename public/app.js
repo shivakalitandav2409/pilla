@@ -153,6 +153,60 @@ async function enterApp() {
   switchView('dashboard');
 }
 
+/* ---------------- Local Persistence Engine ---------------- */
+function getStoredExamsKey() {
+  const u = state.profile?.user || $('#username')?.value?.trim() || 'STOIST25963';
+  return 'pilla_submitted_exams_' + u;
+}
+
+function getStoredExams() {
+  try {
+    return JSON.parse(localStorage.getItem(getStoredExamsKey()) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveExamLocally(examId, score, answers, submissionTime) {
+  try {
+    const key = getStoredExamsKey();
+    const stored = getStoredExams();
+    stored[String(examId)] = {
+      completionStatus: '1',
+      score: score !== undefined ? score : 10,
+      answers: answers || {},
+      submittedAt: submissionTime || new Date().toISOString()
+    };
+    localStorage.setItem(key, JSON.stringify(stored));
+  } catch {}
+}
+
+function getStoredAssignmentsKey() {
+  const u = state.profile?.user || $('#username')?.value?.trim() || 'STOIST25963';
+  return 'pilla_submitted_assignments_' + u;
+}
+
+function getStoredAssignments() {
+  try {
+    return JSON.parse(localStorage.getItem(getStoredAssignmentsKey()) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveAssignmentLocally(assignmentId, fileName, submittedOn) {
+  try {
+    const key = getStoredAssignmentsKey();
+    const stored = getStoredAssignments();
+    stored[String(assignmentId)] = {
+      status: 'Completed',
+      submitted_file: fileName,
+      submitted_on: submittedOn || new Date().toISOString().slice(0, 10)
+    };
+    localStorage.setItem(key, JSON.stringify(stored));
+  } catch {}
+}
+
 async function loadProfile() {
   const p = await apiGet('/api/getID');
   state.profile = p;
@@ -213,20 +267,57 @@ async function loadAllSessions() {
 async function loadAssignments() {
   try {
     const d = await apiPost('/api/getAssignments');
-    state.assignments = d.assignments || [];
+    const remoteAss = d.assignments || [];
+    const localMap = getStoredAssignments();
+
+    // Merge remote with locally stored submissions
+    state.assignments = remoteAss.map(a => {
+      const local = localMap[String(a.id)];
+      if (local) {
+        return {
+          ...a,
+          status: 'Completed',
+          submitted_file: local.submitted_file || a.submitted_file,
+          submitted_on: local.submitted_on || a.submitted_on
+        };
+      }
+      return a;
+    });
+
     const pending = state.assignments.filter(a => a.status === 'Pending').length;
     $('#sideAssBadge').textContent = pending || '';
+    renderDashboardTasks();
   } catch {}
 }
 
 async function loadExams() {
   try {
     const d = await apiPost('/api/getExams');
-    state.exams = d.exams || [];
+    const remoteExams = d.exams || [];
+    const localMap = getStoredExams();
+
+    // Merge remote with locally stored submissions
+    state.exams = remoteExams.map(ex => {
+      const local = localMap[String(ex.examId)];
+      if (local) {
+        return {
+          ...ex,
+          completionStatus: '1',
+          studentScore: local.score !== undefined ? local.score : ex.studentScore,
+          submittedAnswers: local.answers || ex.submittedAnswers,
+          submittedAt: local.submittedAt || ex.submittedAt
+        };
+      }
+      return ex;
+    });
+
     const pending = state.exams.filter(e => e.completionStatus === '0').length;
+    const completed = state.exams.length - pending;
+
     $('#sideExamBadge').textContent = pending || '';
     $('#examPendingCount').textContent = pending;
-    $('#examCompletedCount').textContent = state.exams.length - pending;
+    $('#examCompletedCount').textContent = completed;
+    renderDashboardTasks();
   } catch {}
 }
 
@@ -245,6 +336,47 @@ function renderDashboard() {
   renderKpis(state.metrics);
   renderSubjectBars();
   renderRecent();
+  renderDashboardTasks();
+}
+
+function renderDashboardTasks() {
+  const compExams = state.exams.filter(e => e.completionStatus === '1');
+  const pendExams = state.exams.length - compExams.length;
+  const examStatusEl = $('#dashExamStatus');
+  const examSubEl = $('#dashExamSub');
+  if (examStatusEl) {
+    examStatusEl.textContent = `${compExams.length} Completed · ${pendExams} Scheduled`;
+  }
+  if (examSubEl) {
+    if (compExams.length > 0) {
+      const latest = compExams[compExams.length - 1];
+      const score = latest.studentScore !== undefined ? latest.studentScore : 10;
+      examSubEl.textContent = `Latest: ${latest.examName} (${score}/10 ✓ Passed)`;
+      examSubEl.className = 'tag-success';
+    } else {
+      examSubEl.textContent = 'Click to view scheduled exams →';
+      examSubEl.className = 'muted';
+    }
+  }
+
+  const compAss = state.assignments.filter(a => a.status === 'Completed');
+  const pendAss = state.assignments.filter(a => a.status === 'Pending');
+  const assStatusEl = $('#dashAssStatus');
+  const assSubEl = $('#dashAssSub');
+  if (assStatusEl) {
+    assStatusEl.textContent = `${compAss.length} Completed · ${pendAss.length} Pending`;
+  }
+  if (assSubEl) {
+    if (pendAss.length > 0) {
+      const nextDue = pendAss[0];
+      const shortTitle = (nextDue.title || '').length > 25 ? nextDue.title.slice(0, 24) + '...' : nextDue.title;
+      assSubEl.textContent = `Next Due: ${shortTitle} (${nextDue.due_date})`;
+      assSubEl.className = 'muted';
+    } else {
+      assSubEl.textContent = '✓ All assignments submitted!';
+      assSubEl.className = 'tag-success';
+    }
+  }
 }
 
 function renderGauge(m) {
@@ -657,6 +789,8 @@ function wireAssignmentInteractions() {
           const pending = state.assignments.filter(a => a.status === 'Pending').length;
           $('#sideAssBadge').textContent = pending || '';
 
+          saveAssignmentLocally(id, file.name, new Date().toISOString().slice(0, 10));
+          renderDashboardTasks();
           toast(`✅ ${file.name} uploaded successfully!`);
           renderAssignments($('#assSeg .seg-btn.active')?.dataset.filter || 'all');
         } catch (err) {
@@ -727,6 +861,7 @@ function renderExams(filter = 'all') {
   $('#examsList').innerHTML = list.map(e => {
     const isComp = e.completionStatus === '1';
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
+    const formattedSubAt = e.submittedAt ? new Date(e.submittedAt).toLocaleString() : '';
 
     return `
       <div class="card exam-card">
@@ -743,8 +878,13 @@ function renderExams(filter = 'all') {
           <div class="exam-meta">
             <span>📖 Syllabus: <b>${esc(e.examSyllabus || 'Full Syllabus')}</b></span>
             <span>👤 Faculty: <b>${esc(faculties || 'Department Faculty')}</b></span>
-            <span>⏱️ Duration: <b>30 Mins</b> · 10 Questions</span>
-            ${isComp ? `<span>⭐ Score: <b>${e.studentScore !== undefined ? e.studentScore : 10} / 10</b> (Passed)</span>` : ''}
+            <span>📅 Assigned Date: <b style="color:#ffffff;">${esc(e.startDate || '19th Nov, 2026')}</b></span>
+            <span>🕐 Scheduled Window: <b style="color:#ffffff;">${esc(e.startTime || '09:00 am')} – ${esc(e.endTime || '11:55 pm')}</b></span>
+            <span>⏱️ Duration: <b>${e.durationMinutes || 30} Mins</b> · ${e.totalQuestions || 10} Questions</span>
+            ${isComp ? `
+              <span style="color:var(--green);font-weight:700;">⭐ Score: ${e.studentScore !== undefined ? e.studentScore : 10} / ${e.totalMarks || 10} (Passed)</span>
+              ${formattedSubAt ? `<span style="color:var(--muted);font-size:.78rem;">✅ Submitted: ${formattedSubAt}</span>` : ''}
+            ` : ''}
           </div>
         </div>
         <div class="exam-foot">
@@ -961,6 +1101,8 @@ async function submitQuiz() {
       ex.studentScore = res.score;
     }
     await loadExams();
+    saveExamLocally(state.currentExamId, res.score, state.quizAnswers, new Date().toISOString());
+    renderDashboardTasks();
     toast(`Exam submitted successfully! Score: ${res.score}/${res.totalMarks}`);
   } catch (err) {
     toast(err.message || 'Submission failed', true);

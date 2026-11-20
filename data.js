@@ -1229,9 +1229,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 20,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "10th Sep, 2026",
+    "startTime": "01:00 pm",
+    "endTime": "01:20 pm"
   },
   {
     "examId": "120621",
@@ -1249,9 +1252,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 50,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "18th Sep, 2026",
+    "startTime": "02:00 pm",
+    "endTime": "02:50 pm"
   },
   {
     "examId": "120675",
@@ -1269,9 +1275,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 27,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "3rd Oct, 2026",
+    "startTime": "11:00 am",
+    "endTime": "11:40 am"
   },
   {
     "examId": "120866",
@@ -1291,7 +1300,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "23rd Sep, 2026",
+    "startTime": "03:40 pm",
+    "endTime": "04:30 pm"
   },
   {
     "examId": "120867",
@@ -1309,9 +1321,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 90,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "22nd Sep, 2026",
+    "startTime": "03:30 pm",
+    "endTime": "05:00 pm"
   },
   {
     "examId": "120985",
@@ -1331,7 +1346,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "24th Sep, 2026",
+    "startTime": "09:00 am",
+    "endTime": "11:50 pm"
   },
   {
     "examId": "121018",
@@ -1349,9 +1367,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 40,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "24th Sep, 2026",
+    "startTime": "12:50 pm",
+    "endTime": "01:30 pm"
   },
   {
     "examId": "121475",
@@ -1371,7 +1392,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 5,
+    "startDate": "29th Sep, 2026",
+    "startTime": "09:00 am",
+    "endTime": "11:55 pm"
   },
   {
     "examId": "121496",
@@ -1389,9 +1413,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 10,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 5,
+    "startDate": "29th Sep, 2026",
+    "startTime": "03:30 pm",
+    "endTime": "04:00 pm"
   },
   {
     "examId": "121713",
@@ -1409,9 +1436,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 60,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "1st Oct, 2026",
+    "startTime": "12:30 pm",
+    "endTime": "01:30 pm"
   },
   {
     "examId": "121835",
@@ -1429,9 +1459,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 40,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "3rd Oct, 2026",
+    "startTime": "11:20 am",
+    "endTime": "12:00 pm"
   },
   {
     "examId": "121851",
@@ -1449,9 +1482,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 120,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "3rd Oct, 2026",
+    "startTime": "03:30 pm",
+    "endTime": "05:30 pm"
   },
   {
     "examId": "122149",
@@ -1471,7 +1507,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 5,
+    "startDate": "7th Oct, 2026",
+    "startTime": "09:00 am",
+    "endTime": "11:55 pm"
   },
   {
     "examId": "122253",
@@ -1489,9 +1528,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 40,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 20,
+    "startDate": "8th Oct, 2026",
+    "startTime": "12:40 pm",
+    "endTime": "01:20 pm"
   },
   {
     "examId": "122389",
@@ -1511,7 +1553,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "9th Oct, 2026",
+    "startTime": "07:00 pm",
+    "endTime": "08:00 pm"
   },
   {
     "examId": "122447",
@@ -1529,9 +1574,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 8,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 5,
+    "startDate": "10th Oct, 2026",
+    "startTime": "11:00 am",
+    "endTime": "11:20 am"
   },
   {
     "examId": "122720",
@@ -1549,9 +1597,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 90,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "13th Oct, 2026",
+    "startTime": "03:30 pm",
+    "endTime": "05:00 pm"
   },
   {
     "examId": "122915",
@@ -1569,9 +1620,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 40,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "15th Oct, 2026",
+    "startTime": "12:40 pm",
+    "endTime": "01:20 pm"
   },
   {
     "examId": "123282",
@@ -1589,9 +1643,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 120,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "21st Oct, 2026",
+    "startTime": "03:00 pm",
+    "endTime": "05:00 pm"
   },
   {
     "examId": "123285",
@@ -1609,9 +1666,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 119,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "21st Oct, 2026",
+    "startTime": "03:00 pm",
+    "endTime": "05:00 pm"
   },
   {
     "examId": "123287",
@@ -1629,9 +1689,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 120,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "21st Oct, 2026",
+    "startTime": "03:00 pm",
+    "endTime": "05:00 pm"
   },
   {
     "examId": "123412",
@@ -1651,7 +1714,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "22nd Oct, 2026",
+    "startTime": "12:00 pm",
+    "endTime": "12:30 pm"
   },
   {
     "examId": "123768",
@@ -1669,9 +1735,12 @@ const EXAMS = [
       }
     ],
     "hasQuestions": true,
-    "durationMinutes": 30,
+    "durationMinutes": 7,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "24th Oct, 2026",
+    "startTime": "11:20 am",
+    "endTime": "11:45 am"
   },
   {
     "examId": "125814",
@@ -1691,7 +1760,10 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 5,
+    "startDate": "19th Nov, 2026",
+    "startTime": "09:00 am",
+    "endTime": "11:55 pm"
   },
   {
     "examId": "125821",
@@ -1711,9 +1783,13 @@ const EXAMS = [
     "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
-    "totalMarks": 10
+    "totalMarks": 10,
+    "startDate": "19th Nov, 2026",
+    "startTime": "09:00 am",
+    "endTime": "11:55 pm"
   }
 ];
+
 const EXAM_QUESTIONS_125821 = [
   {
     "qid": "4013500",
