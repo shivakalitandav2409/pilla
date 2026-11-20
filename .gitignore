@@ -4,3 +4,6 @@ Thumbs.db
 *.log
 .wrangler/
 
+
+uploads/*
+!uploads/.gitkeep

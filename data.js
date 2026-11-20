@@ -1228,7 +1228,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1248,7 +1248,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1268,7 +1268,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1288,7 +1288,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1308,7 +1308,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1328,7 +1328,7 @@ const EXAMS = [
         "facultyuid": "51953"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1348,7 +1348,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1368,7 +1368,7 @@ const EXAMS = [
         "facultyuid": "51953"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1388,7 +1388,7 @@ const EXAMS = [
         "facultyuid": "41017"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1408,7 +1408,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1428,7 +1428,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1448,7 +1448,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1468,7 +1468,7 @@ const EXAMS = [
         "facultyuid": "51953"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1488,7 +1488,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1508,7 +1508,7 @@ const EXAMS = [
         "facultyuid": "67780"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1528,7 +1528,7 @@ const EXAMS = [
         "facultyuid": "41017"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1548,7 +1548,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1568,7 +1568,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1588,7 +1588,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1608,7 +1608,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1628,7 +1628,7 @@ const EXAMS = [
         "facultyuid": "13152"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1648,7 +1648,7 @@ const EXAMS = [
         "facultyuid": "13146"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1668,7 +1668,7 @@ const EXAMS = [
         "facultyuid": "41017"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1688,7 +1688,7 @@ const EXAMS = [
         "facultyuid": "51953"
       }
     ],
-    "hasQuestions": false,
+    "hasQuestions": true,
     "durationMinutes": 30,
     "totalQuestions": 10,
     "totalMarks": 10
@@ -1966,6 +1966,287 @@ const EXAM_QUESTIONS_125821 = [
     "correctAnswerId": "4944424"
   }
 ];
+
+const EXAM_QUESTIONS_AI = [
+  {
+    "qid": "5010001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the primary objective of a Heuristic Function in A* Search?",
+    "answers": [
+      { "id": "6010001", "text": "To guarantee exploring all nodes in FIFO order" },
+      { "id": "6010002", "text": "To estimate the cheapest path cost from current state to the goal" },
+      { "id": "6010003", "text": "To randomize the order of branch expansion" },
+      { "id": "6010004", "text": "To count the depth of the search tree" }
+    ],
+    "correctAnswerId": "6010002"
+  },
+  {
+    "qid": "5010002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which condition makes a heuristic admissible in A* search?",
+    "answers": [
+      { "id": "6010005", "text": "It always overestimates the actual distance to the goal" },
+      { "id": "6010006", "text": "It never overestimates the true cost to reach the goal" },
+      { "id": "6010007", "text": "It must equal exactly the step cost of the initial node" },
+      { "id": "6010008", "text": "It must be zero for all intermediate nodes" }
+    ],
+    "correctAnswerId": "6010006"
+  },
+  {
+    "qid": "5010003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What type of agent acts based solely on the current percept, ignoring history?",
+    "answers": [
+      { "id": "6010009", "text": "Model-based Reflex Agent" },
+      { "id": "6010010", "text": "Simple Reflex Agent" },
+      { "id": "6010011", "text": "Goal-based Agent" },
+      { "id": "6010012", "text": "Learning Agent" }
+    ],
+    "correctAnswerId": "6010010"
+  },
+  {
+    "qid": "5010004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In game playing (Adversarial Search), what is Alpha-Beta Pruning used for?",
+    "answers": [
+      { "id": "6010013", "text": "To decrease the branching factor without altering the minimax value" },
+      { "id": "6010014", "text": "To replace heuristic evaluation with random moves" },
+      { "id": "6010015", "text": "To convert 2-player games into 1-player puzzles" },
+      { "id": "6010016", "text": "To prevent infinite loops in graphs" }
+    ],
+    "correctAnswerId": "6010013"
+  },
+  {
+    "qid": "5010005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which algorithm is guaranteed to find the optimal path in a weighted graph?",
+    "answers": [
+      { "id": "6010017", "text": "Depth-First Search (DFS)" },
+      { "id": "6010018", "text": "Uniform-Cost Search (Dijkstra's variant)" },
+      { "id": "6010019", "text": "Greedy Best-First Search" },
+      { "id": "6010020", "text": "Bidirectional DFS" }
+    ],
+    "correctAnswerId": "6010018"
+  },
+  {
+    "qid": "5010006",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the primary role of an Activation Function in Neural Networks?",
+    "answers": [
+      { "id": "6010021", "text": "To normalize the input database schema" },
+      { "id": "6010022", "text": "To introduce non-linearity so the network can learn complex patterns" },
+      { "id": "6010023", "text": "To speed up matrix multiplication in CPU cache" },
+      { "id": "6010024", "text": "To eliminate the need for training epochs" }
+    ],
+    "correctAnswerId": "6010022"
+  },
+  {
+    "qid": "5010007",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In supervised machine learning, what does Overfitting signify?",
+    "answers": [
+      { "id": "6010025", "text": "Model performs equally well on train and test data" },
+      { "id": "6010026", "text": "High accuracy on training set but poor generalization to unseen data" },
+      { "id": "6010027", "text": "Low accuracy on both training and test data" },
+      { "id": "6010028", "text": "Model converges too slowly during gradient descent" }
+    ],
+    "correctAnswerId": "6010026"
+  },
+  {
+    "qid": "5010008",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which algorithm is an unsupervised clustering algorithm?",
+    "answers": [
+      { "id": "6010029", "text": "K-Means Clustering" },
+      { "id": "6010030", "text": "Linear Regression" },
+      { "id": "6010031", "text": "Decision Tree Classifier" },
+      { "id": "6010032", "text": "Support Vector Machine (SVM)" }
+    ],
+    "correctAnswerId": "6010029"
+  },
+  {
+    "qid": "5010009",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What does the Turing Test evaluate?",
+    "answers": [
+      { "id": "6010033", "text": "Computational complexity of NP-complete problems" },
+      { "id": "6010034", "text": "A machine's ability to exhibit indistinguishable human intelligence" },
+      { "id": "6010035", "text": "Floating point operations per second of a GPU" },
+      { "id": "6010036", "text": "Network latency in distributed clusters" }
+    ],
+    "correctAnswerId": "6010034"
+  },
+  {
+    "qid": "5010010",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which problem representation models a problem as Variables, Domains, and Constraints?",
+    "answers": [
+      { "id": "6010037", "text": "Constraint Satisfaction Problem (CSP)" },
+      { "id": "6010038", "text": "Markov Decision Process (MDP)" },
+      { "id": "6010039", "text": "Hidden Markov Model (HMM)" },
+      { "id": "6010040", "text": "Recurrent Belief Network" }
+    ],
+    "correctAnswerId": "6010037"
+  }
+];
+
+const EXAM_QUESTIONS_OOPM = [
+  {
+    "qid": "5020001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which OOP principle focuses on bundling data and methods into a single unit?",
+    "answers": [
+      { "id": "6020001", "text": "Polymorphism" },
+      { "id": "6020002", "text": "Encapsulation" },
+      { "id": "6020003", "text": "Inheritance" },
+      { "id": "6020004", "text": "Abstraction" }
+    ],
+    "correctAnswerId": "6020002"
+  },
+  {
+    "qid": "5020002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the purpose of declaring a destructor as virtual in a base class?",
+    "answers": [
+      { "id": "6020005", "text": "To prevent derived classes from having destructors" },
+      { "id": "6020006", "text": "To ensure proper cleanup of derived objects when deleted via base pointer" },
+      { "id": "6020007", "text": "To speed up memory allocation in heap" },
+      { "id": "6020008", "text": "To allow constructors to be called automatically" }
+    ],
+    "correctAnswerId": "6020006"
+  },
+  {
+    "qid": "5020003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which constructor is invoked when an object is initialized with another existing object?",
+    "answers": [
+      { "id": "6020009", "text": "Default Constructor" },
+      { "id": "6020010", "text": "Parameterized Constructor" },
+      { "id": "6020011", "text": "Copy Constructor" },
+      { "id": "6020012", "text": "Move Destructor" }
+    ],
+    "correctAnswerId": "6020011"
+  },
+  {
+    "qid": "5020004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In C++, what mechanism enables runtime (dynamic) polymorphism?",
+    "answers": [
+      { "id": "6020013", "text": "Function Overloading" },
+      { "id": "6020014", "text": "Operator Overloading" },
+      { "id": "6020015", "text": "Virtual Functions and V-Table" },
+      { "id": "6020016", "text": "Templates and Macros" }
+    ],
+    "correctAnswerId": "6020015"
+  },
+  {
+    "qid": "5020005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What problem arises in multiple inheritance when two classes inherit from the same base?",
+    "answers": [
+      { "id": "6020017", "text": "Segmentation Fault" },
+      { "id": "6020018", "text": "The Diamond Problem (Ambiguity)" },
+      { "id": "6020019", "text": "Deadlock Problem" },
+      { "id": "6020020", "text": "Starvation Error" }
+    ],
+    "correctAnswerId": "6020018"
+  },
+  {
+    "qid": "5020006",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "How is the Diamond Problem resolved in C++?",
+    "answers": [
+      { "id": "6020021", "text": "Using virtual inheritance (virtual base class)" },
+      { "id": "6020022", "text": "By making all variables static" },
+      { "id": "6020023", "text": "By using private access specifier" },
+      { "id": "6020024", "text": "By disabling polymorphism" }
+    ],
+    "correctAnswerId": "6020021"
+  },
+  {
+    "qid": "5020007",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which access specifier allows derived classes access while hiding from outside?",
+    "answers": [
+      { "id": "6020025", "text": "public" },
+      { "id": "6020026", "text": "private" },
+      { "id": "6020027", "text": "protected" },
+      { "id": "6020028", "text": "internal" }
+    ],
+    "correctAnswerId": "6020027"
+  },
+  {
+    "qid": "5020008",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What defines an Abstract Class in C++?",
+    "answers": [
+      { "id": "6020029", "text": "A class with no member variables" },
+      { "id": "6020030", "text": "A class containing at least one pure virtual function (= 0)" },
+      { "id": "6020031", "text": "A class that cannot be inherited" },
+      { "id": "6020032", "text": "A class with only static methods" }
+    ],
+    "correctAnswerId": "6020030"
+  },
+  {
+    "qid": "5020009",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Can a friend function access private members of a class in C++?",
+    "answers": [
+      { "id": "6020033", "text": "Yes, friend functions have access to all private and protected members" },
+      { "id": "6020034", "text": "No, friend functions only see public members" },
+      { "id": "6020035", "text": "Only if declared static" },
+      { "id": "6020036", "text": "Only in derived classes" }
+    ],
+    "correctAnswerId": "6020033"
+  },
+  {
+    "qid": "5020010",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which keyword prevents a class from being inherited in modern C++?",
+    "answers": [
+      { "id": "6020037", "text": "const" },
+      { "id": "6020038", "text": "final" },
+      { "id": "6020039", "text": "sealed" },
+      { "id": "6020040", "text": "override" }
+    ],
+    "correctAnswerId": "6020038"
+  }
+];
+
+function getExamQuestions(examId, subjectName = '') {
+  const sName = String(subjectName || '').toUpperCase();
+  if (examId === '125821' || sName.includes('DATA STRUCTURE')) {
+    return EXAM_QUESTIONS_125821;
+  }
+  if (sName.includes('AI') || sName.includes('ARTIFICIAL') || sName.includes('MACHINE')) {
+    return EXAM_QUESTIONS_AI;
+  }
+  if (sName.includes('OOPM') || sName.includes('OBJECT') || sName.includes('C++') || sName.includes('JAVA')) {
+    return EXAM_QUESTIONS_OOPM;
+  }
+  return EXAM_QUESTIONS_125821;
+}
+
 const NOTIFICATIONS = [
   {
     "id": 283146469,
@@ -2381,6 +2662,9 @@ const NAVIGATION_MODULES = [
 ];
 
 module.exports = {
+  EXAM_QUESTIONS_AI,
+  EXAM_QUESTIONS_OOPM,
+  getExamQuestions,
   INSTITUTE,
   USERS,
   EXAMS,

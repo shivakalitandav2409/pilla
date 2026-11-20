@@ -28,7 +28,8 @@ const {
   EXAM_QUESTIONS_125821,
   NOTIFICATIONS,
   ASSIGNMENTS,
-  NAVIGATION_MODULES
+  NAVIGATION_MODULES,
+  getExamQuestions
 } = require('./data.js');
 
 const PORT = process.env.PORT || 3000;
@@ -595,6 +596,59 @@ async function handleApi(req, res, url) {
     });
   }
 
+  
+  // 8.1 Submit Assignment (Upload & Submit)
+  if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && req.method === 'POST') {
+    const aid = Number(body.assignment_id || body.assignmentId);
+    const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
+    const fileData = body.file_data || body.fileData || '';
+    const remarks = body.remarks || 'Submitted via portal';
+
+    const a = DB.assignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+    if (!a) {
+      return send(res, 404, { ok: false, detail: 'Assignment not found' });
+    }
+
+    a.status = 'Completed';
+    a.submitted_on = new Date().toISOString().slice(0, 10);
+    a.submitted_file = fileName;
+    a.remarks = remarks;
+
+    // Optional safe local disk backup
+    if (fileData) {
+      try {
+        const uploadDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+        const safeName = `${aid}_${Date.now()}_${fileName.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const base64Data = fileData.includes('base64,') ? fileData.split('base64,')[1] : fileData;
+        fs.writeFileSync(path.join(uploadDir, safeName), Buffer.from(base64Data, 'base64'));
+      } catch (err) {}
+    }
+
+    const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+    return send(res, 200, {
+      ok: true,
+      success: true,
+      status: 'success',
+      message: 'Assignment submitted and verified successfully.',
+      assignment: a,
+      assignments: DB.assignments,
+      pending_count: pending,
+      completed_count: DB.assignments.length - pending
+    });
+  }
+
+  // 8.2 Student Assignments (GET / POST compatibility)
+  if ((route === '/api/student/assignments') && (req.method === 'GET' || req.method === 'POST')) {
+    const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+    return send(res, 200, {
+      success: true,
+      data: DB.assignments,
+      assignments: DB.assignments,
+      pendingCount: pending
+    });
+  }
+
   // 9. Get Exams (from Test.har capture)
   if (route === '/api/getExams' && req.method === 'POST') {
     const items = DB.exams;
@@ -608,49 +662,89 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 10. Get Exam Questions
+    // 10. Get Exam Questions
   if (route === '/api/exam/questions' && (req.method === 'POST' || req.method === 'GET')) {
-    const examId = body.exam_id || url.searchParams.get('exam_id') || '125821';
+    const examId = String(body.exam_id || body.examId || url.searchParams.get('exam_id') || '125821');
+    const exam = DB.exams.find(e => String(e.examId) === examId);
+    const questions = (typeof getExamQuestions === 'function') 
+      ? getExamQuestions(examId, exam?.subjectName) 
+      : DB.examQuestions;
+
     return send(res, 200, {
       examId,
-      examName: 'unit 2',
-      examSyllabus: 'stack And Queue',
-      subjectName: 'DATA STRUCTURE',
+      examName: exam ? exam.examName : 'Unit Examination',
+      examSyllabus: exam ? exam.examSyllabus : 'Course Syllabus',
+      subjectName: exam ? exam.subjectName : 'DATA STRUCTURE',
       durationMinutes: 30,
-      totalQuestions: DB.examQuestions.length,
-      questions: DB.examQuestions.map(q => ({
+      totalQuestions: questions.length,
+      questions: questions.map(q => ({
         qid: q.qid,
         marks: q.marks,
         type: q.type,
         text: q.text,
-        answers: q.answers
+        answers: q.answers,
+        correctAnswerId: q.correctAnswerId
       }))
+    });
+  }
+
+  // 10.1 Update Student Online Exam Start Time
+  if (route === '/api/exam/start' && req.method === 'POST') {
+    return send(res, 200, {
+      data: [],
+      success: 'true',
+      status: 'success',
+      message: 'Start time updated successfully.'
     });
   }
 
   // 11. Submit / Auto-save Exam
   if (route === '/api/exam/submit' && req.method === 'POST') {
-    const examId = body.exam_id || '125821';
+    const examId = String(body.exam_id || body.examId || '125821');
     const submissionType = body.submission_type || 'submit';
-    const answers = body.answers || {};
+    
+    // Parse answers map: can be { qid: aid } or JSON array performance [{ q: qid, a: [aid] }]
+    let answers = body.answers || {};
+    if (typeof body.performance === 'string') {
+      try {
+        const perf = JSON.parse(body.performance);
+        if (Array.isArray(perf)) {
+          perf.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+        }
+      } catch {}
+    } else if (Array.isArray(body.performance)) {
+      body.performance.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+    }
+
+    const exam = DB.exams.find(e => String(e.examId) === examId);
+    const questions = (typeof getExamQuestions === 'function') 
+      ? getExamQuestions(examId, exam?.subjectName) 
+      : DB.examQuestions;
 
     let score = 0;
     const questionResults = [];
-    DB.examQuestions.forEach(q => {
+    questions.forEach((q, idx) => {
       const selected = answers[q.qid];
       const isCorrect = selected === q.correctAnswerId;
       if (isCorrect) score += q.marks;
       questionResults.push({
+        qIndex: idx + 1,
         qid: q.qid,
-        selectedAnswerId: selected,
+        qText: q.text,
+        selectedAnswerId: selected || null,
         correctAnswerId: q.correctAnswerId,
-        isCorrect
+        isCorrect,
+        marksAwarded: isCorrect ? q.marks : 0
       });
     });
 
     if (submissionType === 'submit') {
-      const exam = DB.exams.find(e => e.examId === examId);
-      if (exam) exam.completionStatus = '1';
+      if (exam) {
+        exam.completionStatus = '1';
+        exam.studentScore = score;
+        exam.submittedAnswers = answers;
+        exam.submittedAt = new Date().toISOString();
+      }
     }
 
     return send(res, 200, {
@@ -659,8 +753,8 @@ async function handleApi(req, res, url) {
       message: submissionType === 'submit' ? 'Exam submitted successfully.' : 'Exam progress saved.',
       submissionType,
       score,
-      totalMarks: DB.examQuestions.length,
-      percentage: Math.round((score / DB.examQuestions.length) * 100),
+      totalMarks: questions.length,
+      percentage: Math.round((score / questions.length) * 100),
       questionResults
     });
   }

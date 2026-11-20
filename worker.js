@@ -14,7 +14,8 @@ const {
   EXAM_QUESTIONS_125821,
   NOTIFICATIONS,
   ASSIGNMENTS,
-  NAVIGATION_MODULES
+  NAVIGATION_MODULES,
+  getExamQuestions
 } = data;
 
 const JWT_SECRET = 'local-demo-secret-not-for-production-pilla';

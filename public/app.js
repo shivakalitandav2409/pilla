@@ -34,24 +34,28 @@ const SUBJECT_COLORS = [
 async function apiPost(path, body = {}) {
   const payload = Object.assign({}, body);
   if (state.token) payload.dex_token = state.token;
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
   const res = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload)
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw Object.assign(new Error(data.detail || 'Request failed'), { status: res.status, data });
+    throw Object.assign(new Error(data.detail || data.message || 'Request failed'), { status: res.status, data });
   }
   return data;
 }
 
 async function apiGet(path) {
   const url = `${path}${path.includes('?') ? '&' : '?'}dex_token=${encodeURIComponent(state.token || '')}`;
-  const res = await fetch(url);
+  const headers = {};
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+  const res = await fetch(url, { headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw Object.assign(new Error(data.detail || 'Request failed'), { status: res.status, data });
+    throw Object.assign(new Error(data.detail || data.message || 'Request failed'), { status: res.status, data });
   }
   return data;
 }
@@ -474,6 +478,8 @@ function renderSubjectsView() {
 }
 
 /* ---------------- Assignments View ---------------- */
+const selectedFiles = {};
+
 $$('#assSeg .seg-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     $$('#assSeg .seg-btn').forEach(b => b.classList.remove('active'));
@@ -501,29 +507,195 @@ function renderAssignments(filter = 'all') {
 
   $('#assignmentsList').innerHTML = list.map(a => {
     const isComp = a.status === 'Completed';
+    const selFile = selectedFiles[a.id];
+    const fileLabelText = selFile 
+      ? `📄 ${esc(selFile.name)} (${(selFile.size / 1024).toFixed(1)} KB)` 
+      : '📎 Choose or Drag assignment file...';
+
     return `
-      <div class="card ass-card">
+      <div class="card ass-card" data-aid="${a.id}">
         <div>
           <div class="ass-top">
-            <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">${esc(a.subject_name)}</span>
+            <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
+              ${esc(a.subject_name)}
+            </span>
             <span class="ass-status ${isComp ? 'completed' : 'pending'}">${esc(a.status)}</span>
           </div>
           <h3 class="ass-title">${esc(a.title)}</h3>
           <div class="ass-meta">
             <span>📅 Due Date: <b>${esc(a.due_date)}</b></span>
             <span>🎯 Max Marks: <b>${esc(a.marks)}</b></span>
-            ${a.submitted_on ? `<span>✅ Submitted On: ${esc(a.submitted_on)}</span>` : ''}
           </div>
+
+          ${!isComp ? `
+            <div class="ass-upload-box" id="assBox_${a.id}">
+              <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.zip,.py,.cpp" style="display:none;" />
+              <label for="assFile_${a.id}" class="ass-file-drop" id="assDrop_${a.id}">
+                <span class="ass-drop-icon">📎</span>
+                <span class="ass-drop-text" id="assText_${a.id}">${fileLabelText}</span>
+              </label>
+              <div class="ass-action-row">
+                <span class="ass-file-hint muted" style="font-size:.78rem;">PDF, DOCX up to 10MB</span>
+                <button class="ass-upload-btn" id="assBtn_${a.id}" data-id="${a.id}" ${selFile ? '' : 'disabled'}>
+                  <span>Upload & Submit</span>
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div class="ass-completed-box">
+              <span class="ass-doc-pill">
+                ✓ Submitted: <b>${esc(a.submitted_file || 'Assignment_Submission.pdf')}</b>
+              </span>
+              <div style="font-size:.82rem;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;">
+                <span>📅 Submitted On: ${esc(a.submitted_on || 'Recorded')}</span>
+                <span>⭐ Status: Evaluated & Recorded</span>
+              </div>
+              <div class="ass-btn-row">
+                <button class="ass-view-btn" data-id="${a.id}" data-file="${esc(a.submitted_file || 'Assignment.pdf')}">
+                  👁️ View Document
+                </button>
+                <button class="ass-resubmit-btn" data-id="${a.id}">
+                  🔄 Re-submit File
+                </button>
+              </div>
+              <div class="ass-upload-box hidden" id="assReBox_${a.id}" style="margin-top:8px;">
+                <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.zip,.py,.cpp" style="display:none;" />
+                <label for="assFile_${a.id}" class="ass-file-drop">
+                  <span class="ass-drop-icon">📎</span>
+                  <span class="ass-drop-text" id="assText_${a.id}">Choose new file...</span>
+                </label>
+                <div class="ass-action-row">
+                  <span class="muted" style="font-size:.78rem;">Replace previous submission</span>
+                  <button class="ass-upload-btn" id="assBtn_${a.id}" data-id="${a.id}" disabled>
+                    <span>Update Submission</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          `}
         </div>
         <div class="ass-foot">
           <span class="muted" style="font-size:.82rem;">${esc(a.subject_type)} Coursework</span>
           <span style="font-weight:600;font-size:.86rem;color:${isComp ? 'var(--green)' : 'var(--amber)'}">
-            ${isComp ? 'Verified' : 'Action Required'}
+            ${isComp ? 'Verified Submission' : 'Action Required'}
           </span>
         </div>
       </div>
     `;
   }).join('');
+
+  wireAssignmentInteractions();
+}
+
+function wireAssignmentInteractions() {
+  // File inputs
+  $$('.ass-file-input').forEach(input => {
+    input.addEventListener('change', (e) => {
+      const id = input.dataset.id;
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        selectedFiles[id] = file;
+        const textEl = $('#assText_' + id);
+        if (textEl) textEl.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        const btn = $('#assBtn_' + id);
+        if (btn) btn.disabled = false;
+      }
+    });
+  });
+
+  // Drag and drop
+  $$('.ass-upload-box').forEach(box => {
+    const input = box.querySelector('.ass-file-input');
+    if (!input) return;
+    const id = input.dataset.id;
+    box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drag-over'); });
+    box.addEventListener('dragleave', () => box.classList.remove('drag-over'));
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      box.classList.remove('drag-over');
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        const file = e.dataTransfer.files[0];
+        selectedFiles[id] = file;
+        const textEl = $('#assText_' + id);
+        if (textEl) textEl.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        const btn = $('#assBtn_' + id);
+        if (btn) btn.disabled = false;
+      }
+    });
+  });
+
+  // Submit buttons
+  $$('.ass-upload-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      const file = selectedFiles[id];
+      if (!file) {
+        toast('Please choose a file to submit', true);
+        return;
+      }
+      btn.disabled = true;
+      btn.innerHTML = '<span>Uploading...</span>';
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await apiPost('/api/assignment/submit', {
+            assignment_id: Number(id),
+            file_name: file.name,
+            file_data: reader.result,
+            remarks: 'Submitted via student portal'
+          });
+
+          // Update local state
+          const item = state.assignments.find(a => String(a.id) === String(id));
+          if (item) {
+            item.status = 'Completed';
+            item.submitted_on = res.assignment?.submitted_on || new Date().toISOString().slice(0, 10);
+            item.submitted_file = file.name;
+          }
+          delete selectedFiles[id];
+          const pending = state.assignments.filter(a => a.status === 'Pending').length;
+          $('#sideAssBadge').textContent = pending || '';
+
+          toast(`✅ ${file.name} uploaded successfully!`);
+          renderAssignments($('#assSeg .seg-btn.active')?.dataset.filter || 'all');
+        } catch (err) {
+          toast(err.message || 'Upload failed', true);
+          btn.disabled = false;
+          btn.innerHTML = '<span>Upload & Submit</span>';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  });
+
+  // View buttons
+  $$('.ass-view-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const fileName = btn.dataset.file || 'Assignment_Submission.pdf';
+      // Create a friendly downloadable preview blob
+      const content = `Pilla Student Portal Document Archive\n-------------------------------------\nAssignment ID: #${btn.dataset.id}\nFile: ${fileName}\nStudent: ${state.profile?.name || 'Shivang Saxena'}\nStatus: Verified and Submitted\nVerification ID: OK-${Date.now()}`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName.endsWith('.pdf') ? fileName : fileName + '.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast(`Downloaded submission archive: ${fileName}`);
+    });
+  });
+
+  // Re-submit buttons
+  $$('.ass-resubmit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const reBox = $('#assReBox_' + id);
+      if (reBox) reBox.classList.toggle('hidden');
+    });
+  });
 }
 
 /* ---------------- Exams View ---------------- */
@@ -554,7 +726,6 @@ function renderExams(filter = 'all') {
 
   $('#examsList').innerHTML = list.map(e => {
     const isComp = e.completionStatus === '1';
-    const hasQuiz = e.hasQuestions || e.examId === '125821';
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
 
     return `
@@ -573,19 +744,14 @@ function renderExams(filter = 'all') {
             <span>📖 Syllabus: <b>${esc(e.examSyllabus || 'Full Syllabus')}</b></span>
             <span>👤 Faculty: <b>${esc(faculties || 'Department Faculty')}</b></span>
             <span>⏱️ Duration: <b>30 Mins</b> · 10 Questions</span>
+            ${isComp ? `<span>⭐ Score: <b>${e.studentScore !== undefined ? e.studentScore : 10} / 10</b> (Passed)</span>` : ''}
           </div>
         </div>
         <div class="exam-foot">
           <span class="muted" style="font-size:.82rem;">Exam ID: #${esc(e.examId)}</span>
-          ${hasQuiz ? `
-            <button class="quiz-btn" data-exam-id="${esc(e.examId)}" data-exam-title="${esc(e.examName)}" data-exam-subj="${esc(e.subjectName)}">
-              ${isComp ? 'Review Answers ↗' : 'Take Quiz ⏱️'}
-            </button>
-          ` : `
-            <span style="font-size:.82rem;font-weight:600;color:${isComp ? 'var(--green)' : 'var(--muted)'}">
-              ${isComp ? 'Record Saved' : 'Class Scheduled'}
-            </span>
-          `}
+          <button class="quiz-btn ${isComp ? 'review-btn' : ''}" data-exam-id="${esc(e.examId)}" data-exam-title="${esc(e.examName)}" data-exam-subj="${esc(e.subjectName)}" data-is-comp="${isComp ? '1' : '0'}">
+            ${isComp ? 'Review Answers ↗' : 'Take Quiz ⏱️'}
+          </button>
         </div>
       </div>
     `;
@@ -593,31 +759,86 @@ function renderExams(filter = 'all') {
 
   $$('.quiz-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      openQuizModal(btn.dataset.examId, btn.dataset.examTitle, btn.dataset.examSubj);
+      const isComp = btn.dataset.isComp === '1';
+      openQuizModal(btn.dataset.examId, btn.dataset.examTitle, btn.dataset.examSubj, isComp);
     });
   });
 }
 
-/* ---------------- Interactive Quiz Modal ---------------- */
-async function openQuizModal(examId, title, subj) {
+/* ---------------- Interactive Quiz & Review Modal ---------------- */
+let currentExamQuestions = [];
+
+async function openQuizModal(examId, title, subj, isReview = false) {
   state.currentExamId = examId;
-  $('#quizTitle').textContent = `${title} — Examination`;
-  $('#quizSub').textContent = `${subj} · Interactive Assessment`;
-
-  $('#quizResultsContainer').classList.add('hidden');
-  $('#quizQuestionsContainer').classList.remove('hidden');
-  $('#quizFoot').classList.remove('hidden');
-  $('#submitQuizBtn').disabled = false;
-
   $('#quizModal').classList.remove('hidden');
   $('#scrim').classList.remove('hidden');
 
-  // Load questions
-  const qData = await apiPost('/api/exam/questions', { exam_id: examId });
-  renderQuizQuestions(qData.questions || []);
+  if (isReview) {
+    // Review Mode: Display completed solutions
+    $('#quizTitle').textContent = `Review: ${title}`;
+    $('#quizSub').textContent = `${subj} · Examination Solutions & Evaluation`;
+    $('#quizTimer').textContent = '✅ Completed';
+    $('#quizQuestionsContainer').classList.add('hidden');
+    $('#quizFoot').classList.add('hidden');
+    $('#quizResultsContainer').classList.remove('hidden');
 
-  // Timer
-  startQuizTimer();
+    try {
+      const qData = await apiPost('/api/exam/questions', { exam_id: examId });
+      currentExamQuestions = qData.questions || [];
+      const ex = state.exams.find(e => e.examId === examId);
+      const score = ex && ex.studentScore !== undefined ? ex.studentScore : 10;
+      const total = currentExamQuestions.length || 10;
+
+      $('#qrScore').textContent = `${score} / ${total}`;
+      $('#qrHeading').textContent = 'Examination Solutions & Review';
+      $('#qrFeedback').textContent = `Comprehensive question-by-question breakdown of verified answers.`;
+
+      $('#qrReview').innerHTML = currentExamQuestions.map((q, idx) => `
+        <div class="qr-q-card correct">
+          <div class="qr-q-title">
+            <span style="color:var(--green);">✓ Q${idx + 1}.</span>
+            <span>${esc(q.text)}</span>
+          </div>
+          <div class="qr-opt-list">
+            ${q.answers.map(a => {
+              const isCorrect = a.id === q.correctAnswerId;
+              return `
+                <div class="qr-opt ${isCorrect ? 'is-correct' : ''}">
+                  <span>${esc(a.text)}</span>
+                  ${isCorrect ? '<span style="color:var(--green);font-size:.78rem;">✓ Correct Answer (+1 Mark)</span>' : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      toast('Failed to load review', true);
+    }
+  } else {
+    // Quiz Taking Mode
+    $('#quizTitle').textContent = `${title} — Examination`;
+    $('#quizSub').textContent = `${subj} · Interactive Assessment`;
+    $('#quizResultsContainer').classList.add('hidden');
+    $('#quizQuestionsContainer').classList.remove('hidden');
+    $('#quizFoot').classList.remove('hidden');
+    $('#submitQuizBtn').disabled = false;
+    $('#autoSaveStatus').textContent = '● Autosave active';
+
+    try {
+      // Record exam start
+      try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
+
+      // Fetch questions
+      const qData = await apiPost('/api/exam/questions', { exam_id: examId });
+      currentExamQuestions = qData.questions || [];
+      renderQuizQuestions(currentExamQuestions);
+      startQuizTimer();
+    } catch (err) {
+      toast('Failed to load examination questions', true);
+      closeQuizModal();
+    }
+  }
 }
 
 function renderQuizQuestions(questions) {
@@ -640,12 +861,11 @@ function renderQuizQuestions(questions) {
   `).join('');
 
   $$('.q-opt input[type="radio"]').forEach(radio => {
-    radio.addEventListener('change', (e) => {
+    radio.addEventListener('change', () => {
       const qid = radio.closest('.q-opt').dataset.qid;
       const aid = radio.value;
       state.quizAnswers[qid] = aid;
 
-      // Visual update
       const parent = radio.closest('.q-options');
       parent.querySelectorAll('.q-opt').forEach(el => el.classList.remove('selected'));
       radio.closest('.q-opt').classList.add('selected');
@@ -698,15 +918,26 @@ async function submitQuiz() {
     $('#qrFeedback').textContent = `You scored ${res.percentage}% (${res.score} out of ${res.totalMarks} questions correct).`;
 
     // Render answer review
-    $('#qrReview').innerHTML = (res.questionResults || []).map((qr, i) => `
-      <div class="qr-item ${qr.isCorrect ? 'correct' : 'incorrect'}">
-        <strong>Question ${i + 1}: ${qr.isCorrect ? '✓ Correct (+1 Mark)' : '✕ Incorrect (0 Marks)'}</strong>
+    $('#qrReview').innerHTML = (res.questionResults || []).map((qr) => `
+      <div class="qr-q-card ${qr.isCorrect ? 'correct' : 'incorrect'}">
+        <div class="qr-q-title">
+          <span style="color:${qr.isCorrect ? 'var(--green)' : 'var(--red)'};">
+            ${qr.isCorrect ? '✓' : '✕'} Q${qr.qIndex}.
+          </span>
+          <span>${esc(qr.qText)}</span>
+        </div>
+        <div style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:${qr.isCorrect ? 'var(--green)' : 'var(--red)'};">
+          ${qr.isCorrect ? '+1 Mark (Correct)' : '0 Marks (Incorrect)'}
+        </div>
       </div>
     `).join('');
 
     // Mark as completed in state and refresh
     const ex = state.exams.find(e => e.examId === state.currentExamId);
-    if (ex) ex.completionStatus = '1';
+    if (ex) {
+      ex.completionStatus = '1';
+      ex.studentScore = res.score;
+    }
     await loadExams();
     toast(`Exam submitted successfully! Score: ${res.score}/${res.totalMarks}`);
   } catch (err) {
@@ -719,10 +950,23 @@ function closeQuizModal() {
   clearInterval(state.quizTimer);
   $('#quizModal').classList.add('hidden');
   $('#scrim').classList.add('hidden');
-  renderExams($('#examSeg .seg-btn.active').dataset.filter);
+  renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
 }
 
 $('#closeQuizBtn').addEventListener('click', closeQuizModal);
+
+// Retake and close review buttons (if present in DOM)
+const retakeBtn = $('#retakeQuizBtn');
+if (retakeBtn) {
+  retakeBtn.addEventListener('click', () => {
+    const ex = state.exams.find(e => e.examId === state.currentExamId);
+    openQuizModal(state.currentExamId, ex ? ex.examName : 'Examination', ex ? ex.subjectName : 'Course', false);
+  });
+}
+const closeRevBtn = $('#closeReviewBtn');
+if (closeRevBtn) {
+  closeRevBtn.addEventListener('click', closeQuizModal);
+}
 
 /* ---------------- Notifications Modal ---------------- */
 $('#notifBtn').addEventListener('click', () => {
