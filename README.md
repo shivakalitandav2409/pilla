@@ -97,18 +97,35 @@ Then visit:
 
 ---
 
+## Deployment (Cloudflare Workers)
+
+This project is configured and deployed to Cloudflare Workers with edge static assets:
+
+```bash
+# Test build / dry run
+npx wrangler deploy --dry-run
+
+# Deploy to Cloudflare
+npx wrangler deploy
+```
+
+- **Live URL**: [https://vm.shivangsaxena1011.workers.dev](https://vm.shivangsaxena1011.workers.dev)
+- **Classic UI**: [https://vm.shivangsaxena1011.workers.dev/classic/index.html](https://vm.shivangsaxena1011.workers.dev/classic/index.html)
+
+---
+
 ## Project Structure
 
 ```
 ├── server.js            # Standalone Node.js HTTP server (APIs + JWT + Router)
+├── worker.js            # Cloudflare Worker entry point (Edge APIs + JWT)
+├── wrangler.jsonc       # Cloudflare Workers configuration (Assets + nodejs_compat)
 ├── data.js              # Complete integrated dataset from both HAR files
 ├── public/              # Modern UI
 │   ├── index.html       # Single-page interface with exam modal & notifications
 │   ├── app.js           # Interactive client logic
-│   └── styles.css       # Responsive theme styling
-├── public-classic/      # Classic fallback UI
-│   ├── index.html       # Minimal classic view
-│   ├── app.js           # Classic client logic
-│   └── styles.css       # Classic styling
+│   ├── styles.css       # Responsive theme styling
+│   └── classic/         # Classic fallback UI served under /classic/
+├── public-classic/      # Classic fallback UI source
 └── package.json
 ```
