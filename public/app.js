@@ -344,18 +344,34 @@ function renderDashboardTasks() {
   const pendExams = state.exams.length - compExams.length;
   const examStatusEl = $('#dashExamStatus');
   const examSubEl = $('#dashExamSub');
+  const actionSection = $('#actionRequiredSection');
+
+  // Check specifically if the active test (125814 - circular linkedlist by Sapna Raikwar) is pending
+  const circExam = state.exams.find(e => e.examId === '125814');
+  const isCircPending = circExam && circExam.completionStatus !== '1';
+
+  if (actionSection) {
+    actionSection.style.display = isCircPending ? 'block' : 'none';
+  }
+
   if (examStatusEl) {
-    examStatusEl.textContent = `${compExams.length} Completed · ${pendExams} Scheduled`;
+    examStatusEl.textContent = `${compExams.length} Completed · ${pendExams} ${isCircPending ? 'Not Given' : 'Scheduled'}`;
   }
   if (examSubEl) {
-    if (compExams.length > 0) {
+    if (isCircPending) {
+      examSubEl.textContent = `⚠️ Action Required: circular linkedlist (Not Given)`;
+      examSubEl.className = 'tag-warn';
+      examSubEl.style.color = '#f87171';
+    } else if (compExams.length > 0) {
       const latest = compExams[compExams.length - 1];
       const score = latest.studentScore !== undefined ? latest.studentScore : 10;
       examSubEl.textContent = `Latest: ${latest.examName} (${score}/10 ✓ Passed)`;
       examSubEl.className = 'tag-success';
+      examSubEl.style.color = '';
     } else {
       examSubEl.textContent = 'Click to view scheduled exams →';
       examSubEl.className = 'muted';
+      examSubEl.style.color = '';
     }
   }
 
@@ -364,18 +380,29 @@ function renderDashboardTasks() {
   const assStatusEl = $('#dashAssStatus');
   const assSubEl = $('#dashAssSub');
   if (assStatusEl) {
-    assStatusEl.textContent = `${compAss.length} Completed · ${pendAss.length} Pending`;
+    assStatusEl.textContent = `${compAss.length} Completed · ${pendAss.length} Action Required`;
   }
   if (assSubEl) {
     if (pendAss.length > 0) {
       const nextDue = pendAss[0];
-      const shortTitle = (nextDue.title || '').length > 25 ? nextDue.title.slice(0, 24) + '...' : nextDue.title;
-      assSubEl.textContent = `Next Due: ${shortTitle} (${nextDue.due_date})`;
-      assSubEl.className = 'muted';
+      const shortTitle = (nextDue.title || '').length > 28 ? nextDue.title.slice(0, 27) + '...' : nextDue.title;
+      assSubEl.textContent = `⚠️ Due: ${shortTitle} (${nextDue.due_date})`;
+      assSubEl.className = 'tag-warn';
+      assSubEl.style.color = '#fbbf24';
     } else {
-      assSubEl.textContent = '✓ All assignments submitted!';
+      assSubEl.textContent = '✓ All coursework submitted!';
       assSubEl.className = 'tag-success';
+      assSubEl.style.color = '';
     }
+  }
+
+  // Wire dashboard action button if present
+  const dashBtn = $('#dashTakeTestBtn');
+  if (dashBtn && !dashBtn._wired) {
+    dashBtn._wired = true;
+    dashBtn.addEventListener('click', () => {
+      openQuizModal('125814', 'circular linkedlist', 'data structure', false);
+    });
   }
 }
 
@@ -853,10 +880,19 @@ $$('#examSeg .seg-btn').forEach(btn => {
 });
 
 function renderExams(filter = 'all') {
-  let list = state.exams;
+  let list = [...state.exams];
   if (filter !== 'all') {
     list = list.filter(e => e.completionStatus === filter);
   }
+
+  // Sort so that active pending exams (125814 circular linkedlist and 125821) appear first
+  list.sort((a, b) => {
+    if (a.completionStatus === '0' && a.examId === '125814') return -1;
+    if (b.completionStatus === '0' && b.examId === '125814') return 1;
+    if (a.completionStatus === '0' && b.completionStatus === '1') return -1;
+    if (a.completionStatus === '1' && b.completionStatus === '0') return 1;
+    return 0;
+  });
 
   if (!list.length) {
     $('#examsList').innerHTML = `
@@ -871,6 +907,7 @@ function renderExams(filter = 'all') {
 
   $('#examsList').innerHTML = list.map(e => {
     const isComp = e.completionStatus === '1';
+    const isUrgent = !isComp && (e.examId === '125814' || e.examId === '125821');
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
     const formattedSubAt = e.submittedAt 
       ? (isNaN(new Date(String(e.submittedAt).replace(' ', 'T')).getTime()) 
@@ -879,23 +916,24 @@ function renderExams(filter = 'all') {
       : '';
 
     return `
-      <div class="card exam-card">
+      <div class="card exam-card" style="${isUrgent ? 'border: 1px solid rgba(239, 68, 68, 0.5); box-shadow: 0 0 16px rgba(239, 68, 68, 0.1);' : ''}">
         <div>
           <div class="exam-top">
             <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
               ${esc(e.subjectName)} (${esc(e.subjectType)})
             </span>
-            <span class="exam-status ${isComp ? 'completed' : 'pending'}">
-              ${isComp ? 'Completed' : 'Pending'}
+            <span class="exam-status ${isComp ? 'completed' : 'pending'}" style="${isUrgent ? 'background:rgba(239,68,68,0.2); color:#f87171; border:1px solid #ef4444; font-weight:700;' : ''}">
+              ${isComp ? 'Completed' : isUrgent ? '⚠️ NOT GIVEN' : 'Pending'}
             </span>
           </div>
           <h3 class="exam-title">${esc(e.examName)}</h3>
           <div class="exam-meta">
-            <span>📖 Syllabus: <b>${esc(e.examSyllabus || 'Full Syllabus')}</b></span>
+            <span>📖 Syllabus: <b style="${isUrgent ? 'color:#f87171;' : ''}">${esc(e.examSyllabus || 'Full Syllabus')}</b></span>
             <span>👤 Faculty: <b>${esc(faculties || 'Department Faculty')}</b></span>
             <span>📅 Assigned Date: <b style="color:#ffffff;">${esc(e.startDate || '19th Nov, 2026')}</b></span>
             <span>🕐 Scheduled Window: <b style="color:#ffffff;">${esc(e.startTime || '09:00 am')} – ${esc(e.endTime || '11:55 pm')}</b></span>
-            <span>⏱️ Duration: <b>${e.durationMinutes || 30} Mins</b> · ${e.totalQuestions || 10} Questions</span>
+            <span>⏱️ Duration: <b>${e.durationMinutes || 30} Mins</b> · ${e.totalQuestions || 10} Questions · ${e.totalMarks || 10} Marks</span>
+            ${isUrgent ? `<span style="color:#f87171; font-weight:600; font-size:.82rem;">⚠️ Test window open right now · Action Required!</span>` : ''}
             ${isComp ? `
               <span style="color:var(--green);font-weight:700;">⭐ Score: ${e.studentScore !== undefined ? e.studentScore : 10} / ${e.totalMarks || 10} (Passed)</span>
               ${formattedSubAt ? `<span style="color:var(--muted);font-size:.78rem;">✅ Submitted: ${formattedSubAt}</span>` : ''}
@@ -904,8 +942,8 @@ function renderExams(filter = 'all') {
         </div>
         <div class="exam-foot">
           <span class="muted" style="font-size:.82rem;">Exam ID: #${esc(e.examId)}</span>
-          <button class="quiz-btn ${isComp ? 'review-btn' : ''}" data-exam-id="${esc(e.examId)}" data-exam-title="${esc(e.examName)}" data-exam-subj="${esc(e.subjectName)}" data-is-comp="${isComp ? '1' : '0'}">
-            ${isComp ? 'Review Answers ↗' : 'Take Quiz ⏱️'}
+          <button class="quiz-btn ${isComp ? 'review-btn' : ''}" style="${isUrgent ? 'background:#ef4444; border-color:#dc2626; font-weight:700;' : ''}" data-exam-id="${esc(e.examId)}" data-exam-title="${esc(e.examName)}" data-exam-subj="${esc(e.subjectName)}" data-is-comp="${isComp ? '1' : '0'}">
+            ${isComp ? 'Review Answers ↗' : isUrgent ? 'Take Test Now ⏱️' : 'Take Quiz ⏱️'}
           </button>
         </div>
       </div>

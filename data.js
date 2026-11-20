@@ -2423,6 +2423,29 @@ const NOTIFICATIONS = [
 ];
 const ASSIGNMENTS = [
   {
+    "id": 204150,
+    "subId": "216599",
+    "title": "Experiment 4: Circular Linked List",
+    "subAssignmentTitle": "circular linkedlist",
+    "subject_id": 246498,
+    "subject_name": "data structure",
+    "subject_type": "Practical",
+    "due_date": "2026-11-25",
+    "startDate": "2026-11-19",
+    "displayStartDate": "19th Nov, 2026",
+    "displayEndDate": "25th Nov, 2026",
+    "status": "Pending",
+    "marks": 10,
+    "obtainedMarks": null,
+    "evaluation": "",
+    "submitted_on": null,
+    "submitted_file": null,
+    "instructorAttachment": "exp4-circular-linked-list.pdf",
+    "facultyName": "Sapna Raikwar",
+    "batchName": "BATCH 2",
+    "instruction": "Implement circular linked list operations (insert, delete, display). Get verified by faculty before ERP submission."
+  },
+  {
     "id": 202928,
     "subId": "215238",
     "title": "Lab Assignment-5",
