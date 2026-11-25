@@ -15,7 +15,6 @@ const state = {
   allSessions: [],
   assignments: [],
   exams: [],
-  notifications: [],
   stream: '',
   metrics: null,
   quizTimer: null,
@@ -137,8 +136,7 @@ async function enterApp() {
   await Promise.all([
     loadAllSessions(),
     loadAssignments(),
-    loadExams(),
-    loadNotifications()
+    loadExams()
   ]);
 
   // Default date range: span of student sessions
@@ -353,15 +351,6 @@ async function loadExams() {
     $('#examPendingCount').textContent = pending;
     $('#examCompletedCount').textContent = completed;
     renderDashboardTasks();
-  } catch {}
-}
-
-async function loadNotifications() {
-  try {
-    const d = await apiGet('/api/getNotifications');
-    state.notifications = d.notifications || [];
-    const unread = state.notifications.filter(n => !n.isRead).length;
-    $('#notifBadge').textContent = unread || state.notifications.length;
   } catch {}
 }
 
@@ -1446,33 +1435,8 @@ if (closeRevBtn) {
   closeRevBtn.addEventListener('click', closeQuizModal);
 }
 
-/* ---------------- Notifications Modal ---------------- */
-$('#notifBtn').addEventListener('click', () => {
-  renderNotificationsModal();
-  $('#notifModal').classList.remove('hidden');
-  $('#scrim').classList.remove('hidden');
-});
-
-function renderNotificationsModal() {
-  $('#notifList').innerHTML = state.notifications.map(n => `
-    <div class="notif-item">
-      <span class="notif-icon">📢</span>
-      <div class="notif-body">
-        <div class="notif-text">${esc(n.text)}</div>
-        <div class="notif-time">${esc(n.readOn || n.addedOn || 'Recent Alert')}</div>
-      </div>
-    </div>
-  `).join('') || '<p class="muted">No notifications.</p>';
-}
-
-$('#closeNotifBtn').addEventListener('click', () => {
-  $('#notifModal').classList.add('hidden');
-  $('#scrim').classList.add('hidden');
-});
-
 $('#scrim').addEventListener('click', () => {
   closeQuizModal();
-  $('#notifModal').classList.add('hidden');
   closeSidebar();
 });
 
@@ -1508,7 +1472,7 @@ function openSidebar() {
 }
 function closeSidebar() {
   $('#sidebar').classList.remove('open');
-  if ($('#quizModal').classList.contains('hidden') && $('#notifModal').classList.contains('hidden')) {
+  if ($('#quizModal').classList.contains('hidden')) {
     $('#scrim').classList.add('hidden');
   }
 }

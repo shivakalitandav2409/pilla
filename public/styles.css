@@ -143,13 +143,6 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
 .main-head h1 { font-size: 1.6rem; font-weight: 800; letter-spacing: -.02em; color: #ffffff; }
 .main-head .muted { margin: 2px 0 0; font-size: .92rem; }
 .head-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-.notif-bell {
-  background: var(--surface); border: 1px solid var(--line); padding: 8px 13px; border-radius: 20px;
-  font-size: .95rem; font-weight: 600; color: #ffffff; box-shadow: var(--shadow); position: relative;
-  display: flex; align-items: center; gap: 6px; transition: background .15s;
-}
-.notif-bell:hover { background: var(--surface2); }
-.notif-count { background: var(--red); color: #fff; font-size: .72rem; padding: 2px 6px; border-radius: 10px; font-weight: 700; }
 .acad-chip {
   background: var(--surface); border: 1px solid var(--line); padding: 8px 14px;
   border-radius: 20px; font-size: .82rem; font-weight: 600; color: var(--text-dim); box-shadow: var(--shadow);
@@ -318,7 +311,6 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
   box-shadow: var(--shadow-lg); width: 100%; max-height: 90vh; display: flex; flex-direction: column;
   animation: modalIn .2s ease;
 }
-.notif-box { max-width: 580px; }
 .quiz-box { max-width: 780px; }
 @keyframes modalIn { from { opacity: 0; transform: scale(.97); } }
 
@@ -358,14 +350,6 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
 .qr-item { padding: 14px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--line); color: #ffffff; }
 .qr-item.correct { border-left: 4px solid var(--green); }
 .qr-item.incorrect { border-left: 4px solid var(--red); }
-
-/* Notifications inside modal */
-.notif-list { display: flex; flex-direction: column; gap: 12px; }
-.notif-item { padding: 14px 16px; border-radius: var(--radius-sm); border: 1px solid var(--line2); background: var(--surface2); display: flex; gap: 14px; }
-.notif-icon { font-size: 1.3rem; flex: 0 0 auto; padding-top: 2px; }
-.notif-body { flex: 1; }
-.notif-text { font-size: .92rem; font-weight: 600; line-height: 1.35; margin-bottom: 4px; color: #ffffff; }
-.notif-time { font-size: .78rem; color: var(--muted); }
 
 /* ================= TOAST ================= */
 .toast {
