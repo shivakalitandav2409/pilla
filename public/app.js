@@ -167,13 +167,14 @@ function getStoredExams() {
   }
 }
 
-function saveExamLocally(examId, score, answers, submissionTime) {
+function saveExamLocally(examId, score, totalMarks, answers, submissionTime) {
   try {
     const key = getStoredExamsKey();
     const stored = getStoredExams();
     stored[String(examId)] = {
       completionStatus: '1',
       score: score !== undefined ? score : 10,
+      totalMarks: totalMarks !== undefined ? totalMarks : 10,
       answers: answers || {},
       submittedAt: submissionTime || new Date().toISOString()
     };
@@ -296,14 +297,23 @@ async function loadExams() {
     const remoteExams = d.exams || [];
     const localMap = getStoredExams();
 
-    // Merge remote with locally stored submissions
+    // Merge remote with locally stored submissions (prefer newer local submission or live portal score)
     state.exams = remoteExams.map(ex => {
       const local = localMap[String(ex.examId)];
       if (local) {
+        const remoteTime = ex.submittedAt ? Date.parse(String(ex.submittedAt).replace(' ', 'T')) || 0 : 0;
+        const localTime = local.submittedAt ? Date.parse(String(local.submittedAt).replace(' ', 'T')) || 0 : 0;
+        if (ex.completionStatus === '1' && remoteTime > localTime && ex.studentScore !== undefined) {
+          return {
+            ...ex,
+            submittedAnswers: local.answers || ex.submittedAnswers
+          };
+        }
         return {
           ...ex,
           completionStatus: '1',
-          studentScore: local.score !== undefined ? local.score : ex.studentScore,
+          studentScore: local.score !== undefined && local.score !== null ? local.score : ex.studentScore,
+          submittedTotalMarks: local.totalMarks !== undefined ? local.totalMarks : ex.submittedTotalMarks,
           submittedAnswers: local.answers || ex.submittedAnswers,
           submittedAt: local.submittedAt || ex.submittedAt
         };
@@ -339,6 +349,15 @@ function renderDashboard() {
   renderDashboardTasks();
 }
 
+function getExamDisplayTotal(ex, questionCount = 0) {
+  if (!ex) return questionCount || 10;
+  if (ex.submittedTotalMarks) return ex.submittedTotalMarks;
+  const rawTotal = Number(ex.totalMarks) || questionCount || 10;
+  const score = ex.studentScore !== undefined ? Number(ex.studentScore) : 0;
+  if (score > rawTotal) return questionCount || Number(ex.totalQuestions) || score;
+  return rawTotal;
+}
+
 function renderDashboardTasks() {
   const compExams = state.exams.filter(e => e.completionStatus === '1');
   const pendExams = state.exams.length - compExams.length;
@@ -347,7 +366,7 @@ function renderDashboardTasks() {
   const actionSection = $('#actionRequiredSection');
 
   // Check specifically if the active test (125814 - circular linkedlist by Sapna Raikwar) is pending
-  const circExam = state.exams.find(e => e.examId === '125814');
+  const circExam = state.exams.find(e => String(e.examId) === '125814');
   const isCircPending = circExam && circExam.completionStatus !== '1';
 
   if (actionSection) {
@@ -363,9 +382,18 @@ function renderDashboardTasks() {
       examSubEl.className = 'tag-warn';
       examSubEl.style.color = '#f87171';
     } else if (compExams.length > 0) {
-      const latest = compExams[compExams.length - 1];
-      const score = latest.studentScore !== undefined ? latest.studentScore : 10;
-      examSubEl.textContent = `Latest: ${latest.examName} (${score}/10 ✓ Passed)`;
+      const sortedComp = [...compExams].sort((a, b) => {
+        const ta = a.submittedAt ? Date.parse(String(a.submittedAt).replace(' ', 'T')) || 0 : 0;
+        const tb = b.submittedAt ? Date.parse(String(b.submittedAt).replace(' ', 'T')) || 0 : 0;
+        return tb - ta;
+      });
+      const latest = sortedComp[0];
+      const total = getExamDisplayTotal(latest);
+      if (latest.studentScore !== undefined && latest.studentScore !== null) {
+        examSubEl.textContent = `Latest: ${latest.examName} (${latest.studentScore}/${total} ✓ Passed)`;
+      } else {
+        examSubEl.textContent = `Latest: ${latest.examName} (✓ Submitted)`;
+      }
       examSubEl.className = 'tag-success';
       examSubEl.style.color = '';
     } else {
@@ -909,11 +937,15 @@ function renderExams(filter = 'all') {
     const isComp = e.completionStatus === '1';
     const isUrgent = !isComp && (e.examId === '125814' || e.examId === '125821');
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
-    const formattedSubAt = e.submittedAt 
-      ? (isNaN(new Date(String(e.submittedAt).replace(' ', 'T')).getTime()) 
-          ? e.submittedAt 
-          : new Date(String(e.submittedAt).replace(' ', 'T')).toLocaleString()) 
-      : '';
+    const formattedSubAt = e.submittedAt
+      ? (isNaN(new Date(String(e.submittedAt).replace(' ', 'T')).getTime())
+          ? e.submittedAt
+          : new Date(String(e.submittedAt).replace(' ', 'T')).toLocaleString())
+      : (e.submittedAtFormatted && e.submittedAtFormatted !== 'NA' ? e.submittedAtFormatted : '');
+    const hasScore = e.studentScore !== undefined && e.studentScore !== null;
+    const scoreLine = hasScore
+      ? `⭐ Score: ${e.studentScore} / ${getExamDisplayTotal(e)} (Passed)`
+      : (e.viewStudentMarksAllowed === 'off' ? '⭐ Status: Evaluated (Marks Hidden by Faculty)' : '⭐ Status: Submitted & Recorded');
 
     return `
       <div class="card exam-card" style="${isUrgent ? 'border: 1px solid rgba(239, 68, 68, 0.5); box-shadow: 0 0 16px rgba(239, 68, 68, 0.1);' : ''}">
@@ -933,10 +965,11 @@ function renderExams(filter = 'all') {
             <span>📅 Assigned Date: <b style="color:#ffffff;">${esc(e.startDate || '19th Nov, 2026')}</b></span>
             <span>🕐 Scheduled Window: <b style="color:#ffffff;">${esc(e.startTime || '09:00 am')} – ${esc(e.endTime || '11:55 pm')}</b></span>
             <span>⏱️ Duration: <b>${e.durationMinutes || 30} Mins</b> · ${e.totalQuestions || 10} Questions · ${e.totalMarks || 10} Marks</span>
-            ${isUrgent ? `<span style="color:#f87171; font-weight:600; font-size:.82rem;">⚠️ Test window open right now · Action Required!</span>` : ''}
+            ${!isComp && e.allowStartExam ? `<span style="color:var(--green); font-weight:600; font-size:.82rem;">🟢 Live Portal Window Open</span>` : ''}
+            ${isUrgent ? `<span style="color:#f87171; font-weight:600; font-size:.82rem;">⚠️ Action Required!</span>` : ''}
             ${isComp ? `
-              <span style="color:var(--green);font-weight:700;">⭐ Score: ${e.studentScore !== undefined ? e.studentScore : 10} / ${e.totalMarks || 10} (Passed)</span>
-              ${formattedSubAt ? `<span style="color:var(--muted);font-size:.78rem;">✅ Submitted: ${formattedSubAt}</span>` : ''}
+              <span style="color:var(--green);font-weight:700;">${scoreLine}</span>
+              ${formattedSubAt ? `<span style="color:var(--muted);font-size:.78rem;">✅ Submitted: ${esc(formattedSubAt)}</span>` : ''}
             ` : ''}
           </div>
         </div>
@@ -950,7 +983,7 @@ function renderExams(filter = 'all') {
     `;
   }).join('');
 
-  $$('.quiz-btn').forEach(btn => {
+  $$('#examsList .quiz-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const isComp = btn.dataset.isComp === '1';
       openQuizModal(btn.dataset.examId, btn.dataset.examTitle, btn.dataset.examSubj, isComp);
@@ -961,61 +994,108 @@ function renderExams(filter = 'all') {
 /* ---------------- Interactive Quiz & Review Modal ---------------- */
 let currentExamQuestions = [];
 
+function setTimerControlsVisible(visible) {
+  const disp = visible ? '' : 'none';
+  const minus = $('#timerMinusBtn');
+  const plus = $('#timerPlusBtn');
+  if (minus) minus.style.display = disp;
+  if (plus) plus.style.display = disp;
+}
+
+function renderExamReviewList(questions, submittedAnswers = null) {
+  const hasSubmittedMap = submittedAnswers && Object.keys(submittedAnswers).length > 0;
+  return (questions || []).map((q, idx) => {
+    const qMarks = Number(q.marks) || 1;
+    const hasKey = Boolean(q.correctAnswerId);
+    const selectedId = hasSubmittedMap ? submittedAnswers[q.qid] : q.correctAnswerId;
+    const isCorrect = !hasKey
+      ? true
+      : (hasSubmittedMap
+          ? (selectedId !== undefined && selectedId !== null && String(selectedId) === String(q.correctAnswerId))
+          : true);
+
+    return `
+      <div class="qr-q-card ${isCorrect ? 'correct' : 'incorrect'}">
+        <div class="qr-q-title">
+          <span style="color:${isCorrect ? 'var(--green)' : 'var(--red)'};">${isCorrect ? '✓' : '✕'} Q${idx + 1}.</span>
+          <span>${esc(q.text)}</span>
+        </div>
+        ${hasSubmittedMap ? `
+          <div style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:${isCorrect ? 'var(--green)' : 'var(--red)'};">
+            ${!hasKey ? (selectedId ? '✓ Response Recorded' : 'Not Answered') : (isCorrect ? `+${qMarks} Mark${qMarks === 1 ? '' : 's'} (Correct)` : `0 Marks (${selectedId ? 'Incorrect' : 'Not Answered'})`)}
+          </div>
+        ` : ''}
+        <div class="qr-opt-list">
+          ${(q.answers || []).map(a => {
+            const isRightOpt = hasKey && String(a.id) === String(q.correctAnswerId);
+            const isUserChoice = hasSubmittedMap && selectedId !== undefined && selectedId !== null && String(a.id) === String(selectedId);
+            const optClass = isRightOpt || (!hasKey && isUserChoice) ? 'is-correct' : (isUserChoice ? 'user-wrong' : '');
+            let badgeHtml = '';
+            if (!hasKey && isUserChoice) {
+              badgeHtml = `<span style="color:var(--green);font-size:.78rem;">✓ Your Answer</span>`;
+            } else if (isRightOpt && isUserChoice) {
+              badgeHtml = `<span style="color:var(--green);font-size:.78rem;">✓ Your Answer (+${qMarks} Mark${qMarks === 1 ? '' : 's'})</span>`;
+            } else if (isRightOpt) {
+              badgeHtml = `<span style="color:var(--green);font-size:.78rem;">✓ Correct Answer${hasSubmittedMap ? '' : ` (+${qMarks} Mark${qMarks === 1 ? '' : 's'})`}</span>`;
+            } else if (isUserChoice) {
+              badgeHtml = `<span style="color:#fca5a5;font-size:.78rem;">✕ Your Answer</span>`;
+            }
+            return `
+              <div class="qr-opt ${optClass}">
+                <span>${esc(a.text)}</span>
+                ${badgeHtml}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 async function openQuizModal(examId, title, subj, isReview = false) {
   state.currentExamId = examId;
+  clearInterval(state.quizTimer);
   $('#quizModal').classList.remove('hidden');
   $('#scrim').classList.remove('hidden');
 
   if (isReview) {
     // Review Mode: Display completed solutions
+    setTimerControlsVisible(false);
     $('#quizTitle').textContent = `Review: ${title}`;
     $('#quizSub').textContent = `${subj} · Examination Solutions & Evaluation`;
     $('#quizTimer').textContent = '✅ Completed';
     $('#quizQuestionsContainer').classList.add('hidden');
     $('#quizFoot').classList.add('hidden');
     $('#quizResultsContainer').classList.remove('hidden');
+    $('#qrReview').innerHTML = '';
 
     try {
       const qData = await apiPost('/api/exam/questions', { exam_id: examId });
       currentExamQuestions = qData.questions || [];
-      const ex = state.exams.find(e => e.examId === examId);
-      const score = ex && ex.studentScore !== undefined ? ex.studentScore : 10;
-      const total = currentExamQuestions.length || 10;
+      const ex = state.exams.find(e => String(e.examId) === String(examId));
+      const total = currentExamQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0) || getExamDisplayTotal(ex);
+      const hasScore = ex && ex.studentScore !== undefined && ex.studentScore !== null;
 
-      $('#qrScore').textContent = `${score} / ${total}`;
+      $('#qrScore').textContent = hasScore ? `${ex.studentScore} / ${total}` : 'Submitted';
       $('#qrHeading').textContent = 'Examination Solutions & Review';
-      $('#qrFeedback').textContent = `Comprehensive question-by-question breakdown of verified answers.`;
-
-      $('#qrReview').innerHTML = currentExamQuestions.map((q, idx) => `
-        <div class="qr-q-card correct">
-          <div class="qr-q-title">
-            <span style="color:var(--green);">✓ Q${idx + 1}.</span>
-            <span>${esc(q.text)}</span>
-          </div>
-          <div class="qr-opt-list">
-            ${q.answers.map(a => {
-              const isCorrect = a.id === q.correctAnswerId;
-              return `
-                <div class="qr-opt ${isCorrect ? 'is-correct' : ''}">
-                  <span>${esc(a.text)}</span>
-                  ${isCorrect ? '<span style="color:var(--green);font-size:.78rem;">✓ Correct Answer (+1 Mark)</span>' : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `).join('');
+      $('#qrFeedback').textContent = hasScore
+        ? `Comprehensive question-by-question breakdown of verified answers.`
+        : `Submitted on portal (marks hidden by faculty). Showing verified answer key.`;
+      $('#qrReview').innerHTML = renderExamReviewList(currentExamQuestions, ex?.submittedAnswers || null);
     } catch (err) {
       toast('Failed to load review', true);
     }
   } else {
     // Quiz Taking Mode
+    setTimerControlsVisible(true);
     $('#quizTitle').textContent = `${title} — Examination`;
     $('#quizSub').textContent = `${subj} · Interactive Assessment`;
     $('#quizResultsContainer').classList.add('hidden');
     $('#quizQuestionsContainer').classList.remove('hidden');
     $('#quizFoot').classList.remove('hidden');
-    $('#submitQuizBtn').disabled = false;
+    $('#quizQuestionsList').innerHTML = '<p class="muted" style="padding:12px 0;">Loading examination questions...</p>';
+    $('#submitQuizBtn').disabled = true;
     $('#autoSaveStatus').textContent = '● Autosave active';
 
     try {
@@ -1026,6 +1106,7 @@ async function openQuizModal(examId, title, subj, isReview = false) {
       const qData = await apiPost('/api/exam/questions', { exam_id: examId });
       currentExamQuestions = qData.questions || [];
       renderQuizQuestions(currentExamQuestions);
+      $('#submitQuizBtn').disabled = false;
       startQuizTimer();
     } catch (err) {
       toast('Failed to load examination questions', true);
@@ -1061,15 +1142,19 @@ function renderQuizQuestions(questions) {
     </div>
   `;}).join('');
 
-  $$('.q-opt input[type="radio"]').forEach(radio => {
+  $$('#quizQuestionsList .q-opt input[type="radio"]').forEach(radio => {
     radio.addEventListener('change', () => {
       const qid = radio.closest('.q-opt').dataset.qid;
       const aid = radio.value;
       state.quizAnswers[qid] = aid;
 
       const parent = radio.closest('.q-options');
-      parent.querySelectorAll('.q-opt').forEach(el => el.classList.remove('selected'));
-      radio.closest('.q-opt').classList.add('selected');
+      parent.querySelectorAll('.q-opt').forEach(el => {
+        const isNowSelected = el === radio.closest('.q-opt');
+        el.classList.toggle('selected', isNowSelected);
+        const badge = el.querySelector('.auto-selected-badge');
+        if (badge) badge.style.display = isNowSelected ? '' : 'none';
+      });
 
       $('#autoSaveStatus').textContent = '● Progress saved';
     });
@@ -1091,6 +1176,7 @@ function startQuizTimer() {
 }
 
 function adjustQuizTimer(deltaSeconds) {
+  if ($('#quizQuestionsContainer').classList.contains('hidden')) return;
   state.quizSecondsLeft = Math.max(10, state.quizSecondsLeft + deltaSeconds);
   updateTimerDisplay();
   const m = Math.floor(state.quizSecondsLeft / 60);
@@ -1121,45 +1207,60 @@ async function submitQuiz() {
     const res = await apiPost('/api/exam/submit', {
       exam_id: state.currentExamId,
       answers: state.quizAnswers,
+      remainingTime: state.quizSecondsLeft,
       submission_type: 'submit'
     });
 
+    setTimerControlsVisible(false);
+    $('#quizTimer').textContent = '✅ Submitted';
     $('#quizQuestionsContainer').classList.add('hidden');
     $('#quizFoot').classList.add('hidden');
     $('#quizResultsContainer').classList.remove('hidden');
 
-    $('#qrScore').textContent = `${res.score} / ${res.totalMarks}`;
-    $('#qrHeading').textContent = res.percentage >= 75 ? '🌟 Outstanding Performance!' : res.percentage >= 40 ? '✅ Examination Passed' : '⚠️ Keep Practicing';
-    $('#qrFeedback').textContent = `You scored ${res.percentage}% (${res.score} out of ${res.totalMarks} questions correct).`;
+    if (res.hasAnswerKey !== false && res.score !== null && res.score !== undefined) {
+      $('#qrScore').textContent = `${res.score} / ${res.totalMarks}`;
+      $('#qrHeading').textContent = res.percentage >= 75 ? '🌟 Outstanding Performance!' : res.percentage >= 40 ? '✅ Examination Passed' : '⚠️ Keep Practicing';
+      $('#qrFeedback').textContent = `You scored ${res.percentage}% (${res.score} out of ${res.totalMarks} marks).`;
+    } else {
+      $('#qrScore').textContent = 'Submitted';
+      $('#qrHeading').textContent = '✅ Examination Submitted';
+      $('#qrFeedback').textContent = res.upstream_status === 'success'
+        ? 'Your responses have been submitted directly to the live portal.'
+        : 'Your responses have been recorded.';
+    }
 
-    // Render answer review
-    $('#qrReview').innerHTML = (res.questionResults || []).map((qr) => `
-      <div class="qr-q-card ${qr.isCorrect ? 'correct' : 'incorrect'}">
-        <div class="qr-q-title">
-          <span style="color:${qr.isCorrect ? 'var(--green)' : 'var(--red)'};">
-            ${qr.isCorrect ? '✓' : '✕'} Q${qr.qIndex}.
-          </span>
-          <span>${esc(qr.qText)}</span>
-        </div>
-        <div style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:${qr.isCorrect ? 'var(--green)' : 'var(--red)'};">
-          ${qr.isCorrect ? '+1 Mark (Correct)' : '0 Marks (Incorrect)'}
-        </div>
-      </div>
-    `).join('');
+    // Render full answer review with selected and correct options
+    $('#qrReview').innerHTML = renderExamReviewList(currentExamQuestions, state.quizAnswers);
 
+    const submittedAt = new Date().toISOString();
     // Mark as completed in state and refresh
-    const ex = state.exams.find(e => e.examId === state.currentExamId);
+    const ex = state.exams.find(e => String(e.examId) === String(state.currentExamId));
     if (ex) {
       ex.completionStatus = '1';
-      ex.studentScore = res.score;
+      if (res.hasAnswerKey !== false && res.score !== null && res.score !== undefined) {
+        ex.studentScore = res.score;
+        ex.submittedTotalMarks = res.totalMarks;
+      }
+      ex.submittedAnswers = Object.assign({}, state.quizAnswers);
+      ex.submittedAt = submittedAt;
     }
-    saveExamLocally(state.currentExamId, res.score, state.quizAnswers, new Date().toISOString());
+    saveExamLocally(
+      state.currentExamId,
+      res.hasAnswerKey !== false ? res.score : null,
+      res.totalMarks,
+      state.quizAnswers,
+      submittedAt
+    );
     await loadExams();
     renderDashboardTasks();
     renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
-    toast(`Exam submitted successfully! Score: ${res.score}/${res.totalMarks}`);
+    const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : '';
+    toast(res.hasAnswerKey !== false && res.score !== null
+      ? `Exam submitted${syncNote}! Score: ${res.score}/${res.totalMarks}`
+      : `Exam submitted${syncNote}!`);
   } catch (err) {
     toast(err.message || 'Submission failed', true);
+    $('#autoSaveStatus').textContent = '● Autosave active';
     $('#submitQuizBtn').disabled = false;
   }
 }
@@ -1168,6 +1269,7 @@ function closeQuizModal() {
   clearInterval(state.quizTimer);
   $('#quizModal').classList.add('hidden');
   $('#scrim').classList.add('hidden');
+  renderDashboardTasks();
   renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
 }
 
@@ -1177,7 +1279,7 @@ $('#closeQuizBtn').addEventListener('click', closeQuizModal);
 const retakeBtn = $('#retakeQuizBtn');
 if (retakeBtn) {
   retakeBtn.addEventListener('click', () => {
-    const ex = state.exams.find(e => e.examId === state.currentExamId);
+    const ex = state.exams.find(e => String(e.examId) === String(state.currentExamId));
     openQuizModal(state.currentExamId, ex ? ex.examName : 'Examination', ex ? ex.subjectName : 'Course', false);
   });
 }

@@ -177,12 +177,21 @@ function seedSessionsForUser(user) {
 const DB = {
   users: JSON.parse(JSON.stringify(USERS)),
   sessionsByUser: {},
+  examsByUser: {},
+  liveQuestionsByUser: {},
   exams: JSON.parse(JSON.stringify(EXAMS)),
   examQuestions: JSON.parse(JSON.stringify(EXAM_QUESTIONS_125821)),
   notifications: JSON.parse(JSON.stringify(NOTIFICATIONS)),
   assignments: JSON.parse(JSON.stringify(ASSIGNMENTS)),
   revokedTokens: new Set()
 };
+
+function getUserExams(username) {
+  if (!DB.examsByUser[username]) {
+    DB.examsByUser[username] = JSON.parse(JSON.stringify(EXAMS));
+  }
+  return DB.examsByUser[username];
+}
 
 for (const [username, user] of Object.entries(DB.users)) {
   DB.sessionsByUser[username] = seedSessionsForUser(user);
@@ -595,6 +604,214 @@ async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, 
   }
 }
 
+/* ---------------- Live Online Exam Engine (ported from Test.har) ---------------- */
+async function generateLearnerToken(uid, email = '') {
+  if (!uid) return null;
+  const tokenData = { source: 'web', uid: Number(uid), email: email || '', role: 'learner' };
+  const params = new URLSearchParams();
+  params.append('GenerateAccessToken', 'true');
+  params.append('data', Buffer.from(JSON.stringify(tokenData)).toString('base64'));
+  try {
+    const res = await fetch('https://portal.vmedulife.com/api/tokenmanagement.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/OnlineExam/AssignedModulesList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const json = await res.json().catch(() => ({}));
+    if (json && json.status === 'success' && json.data && json.data.user_token) {
+      return json.data.user_token;
+    }
+  } catch {}
+  return null;
+}
+
+async function getLearnerAuthToken(user, forceRefresh = false) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return null;
+  if (!forceRefresh && user.learnerToken) return user.learnerToken;
+  const tok = await generateLearnerToken(user.stuid, user.email);
+  if (tok) user.learnerToken = tok;
+  return tok;
+}
+
+async function postOnlineExamApi(user, actionName, dataObj) {
+  let token = await getLearnerAuthToken(user);
+  if (!token) return null;
+  const tokenParam = Buffer.from(JSON.stringify({ source: 'web', uid: Number(user.stuid), role: 'learner' })).toString('base64');
+
+  const sendReq = async (authTok) => {
+    const params = new URLSearchParams();
+    params.append(actionName, 'true');
+    params.append('data', JSON.stringify(dataObj));
+    params.append('tokenInputParameter', tokenParam);
+    const res = await fetch('https://portal.vmedulife.com/api/instructor/onlineExam.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + authTok,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/OnlineExam/AssignedModulesList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const text = await res.text();
+    return JSON.parse(text.trim());
+  };
+
+  let json = await sendReq(token);
+  if (json && json.message === 'Unauthorized request.') {
+    token = await getLearnerAuthToken(user, true);
+    if (token) json = await sendReq(token);
+  }
+  return json;
+}
+
+function mapPortalExam(e) {
+  const isComp = String(e.completionStatus) === '1';
+  const marksAllowed = e.viewStudentMarksAllowed || 'off';
+  const rawScore = Number(e.obtainedScore);
+  const hasVisibleScore = isComp && (marksAllowed === 'on' || rawScore > 0);
+  const subTime = e.studentExamSubmissionTime && e.studentExamSubmissionTime !== '0000-00-00 00:00:00'
+    ? e.studentExamSubmissionTime
+    : undefined;
+
+  return {
+    examId: String(e.examId),
+    examName: e.examName || 'Examination',
+    examSyllabus: e.examSyllabus || 'General',
+    completionStatus: isComp ? '1' : '0',
+    subjectId: String(e.subjectId || ''),
+    subjectName: e.subjectName || 'Subject',
+    subjectType: e.subjectType || 'Theory',
+    subjectChoice: e.subjectChoice || 'regular',
+    subjectFaculties: Array.isArray(e.subjectFaculties) ? e.subjectFaculties : [],
+    hasQuestions: true,
+    durationMinutes: Number(e.duration) || 30,
+    totalQuestions: Number(e.displayQuestionNumber) || 10,
+    totalMarks: Number(e.examMarks) || 10,
+    startDate: e.examStartDate || '',
+    endDate: e.examEndDate || '',
+    startTime: e.startTime || '',
+    endTime: e.endTime || '',
+    viewStudentMarksAllowed: marksAllowed,
+    viewStudentPerformanceAllowed: e.viewStudentPerformanceAllowed || 'off',
+    allowStartExam: Boolean(e.allowStartExam),
+    startExamLink: e.startExamLink || '',
+    studentExamStartTime: e.studentExamStartTime || '',
+    submittedAtFormatted: e.studentExamSubmissionTimeFormatted || '',
+    ...(hasVisibleScore ? { studentScore: rawScore } : {}),
+    ...(subTime ? { submittedAt: subTime } : {}),
+    source: 'live'
+  };
+}
+
+async function getLiveStudentExams(user) {
+  if (!user || !user.stuid || !user.sid || !user.groupid || user.username === 'DEMO123') return null;
+  try {
+    const batchIds = Array.isArray(user.batchIds) && user.batchIds.length
+      ? user.batchIds.map(String)
+      : [String(user.buid || '70134')];
+
+    const json = await postOnlineExamApi(user, 'getStudentGroupAndBatchwiseOnlineExams', {
+      sid: String(user.sid),
+      groupId: String(user.groupid),
+      studentId: Number(user.stuid),
+      acayr: Number(user.acayr || 12),
+      offset: 0,
+      limit: 100,
+      examId: 0,
+      assignedBatchIds: batchIds
+    });
+
+    if (!json || json.success !== 'true' || !json.data || typeof json.data !== 'object') return null;
+    return {
+      exams: Object.values(json.data).map(mapPortalExam),
+      pendingIds: json.pendingExamIds || [],
+      completedIds: json.completedExamIds || []
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getLiveExamQuestions(user, examId) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return null;
+  try {
+    const json = await postOnlineExamApi(user, 'getStudentAssignedOnlineExamQuestionList', {
+      studentId: Number(user.stuid),
+      examId: Number(examId)
+    });
+    if (!json) return null;
+    if (json.success !== 'true' || !json.data || Array.isArray(json.data)) {
+      return { questions: null, message: json.message || 'Live questions unavailable', liveStatus: 'fallback' };
+    }
+    const entries = Object.entries(json.data);
+    if (!entries.length) {
+      return { questions: null, message: json.message || 'No live questions returned', liveStatus: 'fallback' };
+    }
+    return {
+      questions: entries.map(([qid, q]) => ({
+        qid: String(qid),
+        marks: Number(q.marks) || 1,
+        type: (q.question && q.question.qType) || 'MULTIPLE-CHOICE',
+        text: (q.question && q.question.qText) || '',
+        image: (q.question && q.question.qImage) || '',
+        answers: (q.answers || []).map(a => ({ id: String(a.aUID), text: a.aText || '', image: a.aImage || '' })),
+        correctAnswerId: null
+      })),
+      remainingTime: Number(json.remainingTime) || 1800,
+      isAutoSaved: json.isAutoSaved === 'true',
+      liveStatus: 'live'
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function startLiveExam(user, examId) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const startTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const json = await postOnlineExamApi(user, 'updateStudentOnlineExamStartTime', {
+      studentId: Number(user.stuid),
+      examId: Number(examId),
+      startTime,
+      source: 'WEB'
+    });
+    const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
+async function submitLiveExam(user, examId, answers, remainingTime = 1660, submissionType = 'submit') {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const perfArr = Object.entries(answers || {}).map(([q, a]) => ({ q: String(q), a: [String(a || '')] }));
+    const json = await postOnlineExamApi(user, 'submitOnlineExam', {
+      studentId: Number(user.stuid),
+      examId: Number(examId),
+      performance: JSON.stringify(perfArr),
+      score: 0,
+      remainingTime: Number(remainingTime) || 1660,
+      iid: 987,
+      submissionType: submissionType === 'auto-save' ? 'Auto-save' : 'submit'
+    });
+    const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -641,10 +858,14 @@ export default {
         if (live.ok && live.data) {
           isAuthenticated = true;
           const s = live.data.studentData;
+          const td = live.data.tokenDetails || {};
           const group = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
           const streamName = group.streamname || 'B. Tech';
           const sid = Number(group.streamid) || 1084;
           const groupid = Number(group.gid) || 101182;
+          const batchIds = (s.studentAssignedBatches && Array.isArray(s.studentAssignedBatches.ubid_array) && s.studentAssignedBatches.ubid_array.length)
+            ? s.studentAssignedBatches.ubid_array.map(String)
+            : (group.buid ? [String(group.buid)] : ['70134']);
           const templateUser = USERS[username] || (sid === 1075 ? USERS['STOIST251161'] : USERS['STOIST25963']);
           const matchingSubjects = templateUser ? templateUser.subjects : USERS['STOIST25963'].subjects;
 
@@ -659,7 +880,12 @@ export default {
             streamName: streamName,
             sid: sid,
             groupid: groupid,
+            buid: Number(batchIds[0]) || 70134,
+            batchIds: batchIds,
             acayr: Number(s.Acayear) || 12,
+            learnerToken: (td.data && td.data.user_token) || '',
+            syncToken: (td.data && td.data.sync_token) || '',
+            deviceId: td.deviceId || s.deviceId || '',
             mentor: templateUser ? templateUser.mentor : USERS['STOIST25963'].mentor,
             fees: { totalAmount: 63500, paid: 63500, balance: 0, percentage: 100, status: "Fully Paid" },
             streams: [{ sid, groupid: null, name: streamName }, { sid, groupid, name: null }],
@@ -707,7 +933,14 @@ export default {
 
       const username = authUser(body, url, request);
       if (!username) {
-        if (!route.startsWith('/api/get') && !route.startsWith('/api/present') && !route.startsWith('/api/absent')) {
+        if (
+          !route.startsWith('/api/get') &&
+          !route.startsWith('/api/present') &&
+          !route.startsWith('/api/absent') &&
+          !route.startsWith('/api/exam/') &&
+          !route.startsWith('/api/assignment/') &&
+          !route.startsWith('/api/student/')
+        ) {
           // direct vmedulife routes
           if (route === '/api/generic_api.php') {
             return jsonResponse({ data: { InstituteId: INSTITUTE.id, InstituteName: INSTITUTE.name, InstituteShortName: INSTITUTE.shortName, Location: INSTITUTE.location, InstituteURL: INSTITUTE.url, InstituteLogo: INSTITUTE.logo }, success: true });
@@ -879,29 +1112,82 @@ export default {
       }
 
       if (route === '/api/getExams' && request.method === 'POST') {
-        const items = DB.exams;
-        return jsonResponse({ count: items.length, pending_count: items.filter(e => e.completionStatus === '0').length, completed_count: items.filter(e => e.completionStatus === '1').length, exams: items });
+        let source = 'har';
+        if (user.username !== 'DEMO123') {
+          try {
+            const liveEx = await getLiveStudentExams(user);
+            if (liveEx && Array.isArray(liveEx.exams) && liveEx.exams.length) {
+              const prevMap = new Map((DB.examsByUser[username] || []).map(e => [String(e.examId), e]));
+              DB.examsByUser[username] = liveEx.exams.map(e => {
+                const prev = prevMap.get(String(e.examId));
+                if (prev && prev.completionStatus === '1' && e.completionStatus !== '1' && prev._localSubmitted) {
+                  return { ...e, ...prev, source: 'live' };
+                }
+                return e;
+              });
+              source = 'live';
+            }
+          } catch {}
+        }
+
+        const items = getUserExams(username);
+        return jsonResponse({
+          count: items.length,
+          pending_count: items.filter(e => e.completionStatus === '0').length,
+          completed_count: items.filter(e => e.completionStatus === '1').length,
+          source,
+          exams: items
+        });
       }
 
       if (route === '/api/exam/questions') {
         const examId = String(body.exam_id || body.examId || url.searchParams.get('exam_id') || '125821');
-        const exam = DB.exams.find(e => String(e.examId) === examId);
-        const questions = (typeof getExamQuestions === 'function') 
-          ? getExamQuestions(examId, exam?.subjectName) 
+        const userExams = getUserExams(username);
+        const exam = userExams.find(e => String(e.examId) === examId);
+        const fallbackQuestions = (typeof getExamQuestions === 'function')
+          ? getExamQuestions(examId, exam?.subjectName)
           : DB.examQuestions;
+
+        let questions = fallbackQuestions;
+        let source = 'har';
+        let liveMessage = '';
+        let remainingTime = (exam && exam.durationMinutes ? exam.durationMinutes : 30) * 60;
+
+        if (user.username !== 'DEMO123' && (!exam || exam.completionStatus !== '1')) {
+          try {
+            const liveQ = await getLiveExamQuestions(user, examId);
+            if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
+              const keyMap = new Map(fallbackQuestions.map(fq => [String(fq.qid), fq.correctAnswerId]));
+              questions = liveQ.questions.map(q => ({
+                ...q,
+                correctAnswerId: keyMap.get(String(q.qid)) || q.correctAnswerId || null
+              }));
+              DB.liveQuestionsByUser[username] = DB.liveQuestionsByUser[username] || {};
+              DB.liveQuestionsByUser[username][examId] = questions;
+              remainingTime = liveQ.remainingTime || remainingTime;
+              source = 'live';
+            } else if (liveQ && liveQ.message) {
+              liveMessage = liveQ.message;
+            }
+          } catch {}
+        }
 
         return jsonResponse({
           examId,
           examName: exam ? exam.examName : 'Unit Examination',
           examSyllabus: exam ? exam.examSyllabus : 'Course Syllabus',
           subjectName: exam ? exam.subjectName : 'DATA STRUCTURE',
-          durationMinutes: 30,
+          durationMinutes: exam && exam.durationMinutes ? exam.durationMinutes : 30,
+          remainingTime,
           totalQuestions: questions.length,
+          source,
+          liveMessage,
           questions: questions.map(q => ({
             qid: q.qid,
             marks: q.marks,
             type: q.type,
             text: q.text,
+            image: q.image || '',
             answers: q.answers,
             correctAnswerId: q.correctAnswerId
           }))
@@ -909,10 +1195,19 @@ export default {
       }
 
       if (route === '/api/exam/start' && request.method === 'POST') {
+        const examId = String(body.exam_id || body.examId || '');
+        const userExams = getUserExams(username);
+        const exam = userExams.find(e => String(e.examId) === examId);
+        let upstream_status = 'simulated';
+        if (user.username !== 'DEMO123' && exam && exam.allowStartExam) {
+          const up = await startLiveExam(user, examId);
+          if (up && up.ok) upstream_status = 'success';
+        }
         return jsonResponse({
           data: [],
           success: 'true',
           status: 'success',
+          upstream_status,
           message: 'Start time updated successfully.'
         });
       }
@@ -920,8 +1215,9 @@ export default {
       if (route === '/api/exam/submit' && request.method === 'POST') {
         const examId = String(body.exam_id || body.examId || '125821');
         const submissionType = body.submission_type || 'submit';
-        
-        let answers = body.answers || {};
+        const remainingTime = Number(body.remainingTime) || 1660;
+
+        let answers = Object.assign({}, body.answers || {});
         if (typeof body.performance === 'string') {
           try {
             const perf = JSON.parse(body.performance);
@@ -933,35 +1229,50 @@ export default {
           body.performance.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
         }
 
-        const exam = DB.exams.find(e => String(e.examId) === examId);
-        const questions = (typeof getExamQuestions === 'function') 
-          ? getExamQuestions(examId, exam?.subjectName) 
-          : DB.examQuestions;
+        const userExams = getUserExams(username);
+        const exam = userExams.find(e => String(e.examId) === examId);
+        const liveCached = DB.liveQuestionsByUser[username] && DB.liveQuestionsByUser[username][examId];
+        const questions = liveCached || ((typeof getExamQuestions === 'function')
+          ? getExamQuestions(examId, exam?.subjectName)
+          : DB.examQuestions);
 
+        const hasAnswerKey = questions.length > 0 && questions.every(q => Boolean(q.correctAnswerId));
         let score = 0;
+        let totalMarks = 0;
         const questionResults = [];
         questions.forEach((q, idx) => {
+          const qMarks = Number(q.marks) || 1;
+          totalMarks += qMarks;
           const selected = answers[q.qid];
-          const isCorrect = selected === q.correctAnswerId;
-          if (isCorrect) score += q.marks;
+          const isCorrect = Boolean(q.correctAnswerId) && selected !== undefined && selected !== null && String(selected) === String(q.correctAnswerId);
+          if (isCorrect) score += qMarks;
           questionResults.push({
             qIndex: idx + 1,
             qid: q.qid,
             qText: q.text,
+            marks: qMarks,
             selectedAnswerId: selected || null,
-            correctAnswerId: q.correctAnswerId,
-            isCorrect,
-            marksAwarded: isCorrect ? q.marks : 0
+            correctAnswerId: q.correctAnswerId || null,
+            isCorrect: q.correctAnswerId ? isCorrect : null,
+            marksAwarded: isCorrect ? qMarks : 0
           });
         });
 
-        if (submissionType === 'submit') {
-          if (exam) {
-            exam.completionStatus = '1';
+        let upstream_status = 'simulated';
+        if (user.username !== 'DEMO123' && exam && exam.allowStartExam) {
+          const up = await submitLiveExam(user, examId, answers, remainingTime, submissionType);
+          if (up && up.ok) upstream_status = 'success';
+        }
+
+        if (submissionType === 'submit' && exam) {
+          exam.completionStatus = '1';
+          exam._localSubmitted = true;
+          if (hasAnswerKey) {
             exam.studentScore = score;
-            exam.submittedAnswers = answers;
-            exam.submittedAt = new Date().toISOString();
+            exam.submittedTotalMarks = totalMarks;
           }
+          exam.submittedAnswers = answers;
+          exam.submittedAt = new Date().toISOString();
         }
 
         return jsonResponse({
@@ -969,9 +1280,11 @@ export default {
           status: 'success',
           message: submissionType === 'submit' ? 'Exam submitted successfully.' : 'Exam progress saved.',
           submissionType,
-          score,
-          totalMarks: questions.length,
-          percentage: Math.round((score / questions.length) * 100),
+          upstream_status,
+          hasAnswerKey,
+          score: hasAnswerKey ? score : null,
+          totalMarks,
+          percentage: hasAnswerKey && totalMarks > 0 ? Math.round((score / totalMarks) * 100) : null,
           questionResults
         });
       }

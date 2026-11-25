@@ -1230,11 +1230,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 20,
-    "totalQuestions": 10,
+    "totalQuestions": 2,
     "totalMarks": 10,
     "startDate": "10th Sep, 2026",
+    "endDate": "10th Sep,2026",
     "startTime": "01:00 pm",
-    "endTime": "01:20 pm"
+    "endTime": "01:20 pm",
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "off"
   },
   {
     "examId": "120621",
@@ -1253,11 +1256,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 50,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "18th Sep, 2026",
+    "endDate": "18th Sep,2026",
     "startTime": "02:00 pm",
-    "endTime": "02:50 pm"
+    "endTime": "02:50 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "120675",
@@ -1276,11 +1282,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 27,
-    "totalQuestions": 10,
+    "totalQuestions": 2,
     "totalMarks": 10,
     "startDate": "3rd Oct, 2026",
+    "endDate": "3rd Oct,2026",
     "startTime": "11:00 am",
-    "endTime": "11:40 am"
+    "endTime": "11:40 am",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "120866",
@@ -1302,9 +1311,11 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "23rd Sep, 2026",
+    "endDate": "23rd Sep,2026",
     "startTime": "03:40 pm",
     "endTime": "04:30 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "on",
     "submittedAt": "2026-09-23 15:47:27"
   },
   {
@@ -1327,8 +1338,11 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "22nd Sep, 2026",
+    "endDate": "29th Sep,2026",
     "startTime": "03:30 pm",
-    "endTime": "05:00 pm"
+    "endTime": "05:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "120985",
@@ -1350,9 +1364,11 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "24th Sep, 2026",
+    "endDate": "25th Sep,2026",
     "startTime": "09:00 am",
     "endTime": "11:50 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "on",
     "submittedAt": "2026-09-25 11:27:40"
   },
   {
@@ -1372,11 +1388,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 40,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "24th Sep, 2026",
+    "endDate": "24th Sep,2026",
     "startTime": "12:50 pm",
-    "endTime": "01:30 pm"
+    "endTime": "01:30 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "121475",
@@ -1395,12 +1414,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 30,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 5,
     "startDate": "29th Sep, 2026",
+    "endDate": "30th Sep,2026",
     "startTime": "09:00 am",
     "endTime": "11:55 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "on",
     "submittedAt": "2026-09-29 15:09:43"
   },
   {
@@ -1420,12 +1441,15 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 10,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 5,
     "startDate": "29th Sep, 2026",
+    "endDate": "29th Sep,2026",
     "startTime": "03:30 pm",
     "endTime": "04:00 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on",
+    "studentScore": 5,
     "submittedAt": "2026-09-29 15:44:18"
   },
   {
@@ -1445,12 +1469,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 60,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "1st Oct, 2026",
+    "endDate": "1st Oct,2026",
     "startTime": "12:30 pm",
     "endTime": "01:30 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "off",
     "submittedAt": "2026-10-01 12:39:00"
   },
   {
@@ -1470,11 +1496,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 40,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "3rd Oct, 2026",
+    "endDate": "3rd Oct,2026",
     "startTime": "11:20 am",
-    "endTime": "12:00 pm"
+    "endTime": "12:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "121851",
@@ -1493,11 +1522,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 120,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "3rd Oct, 2026",
+    "endDate": "4th Oct,2026",
     "startTime": "03:30 pm",
-    "endTime": "05:30 pm"
+    "endTime": "05:30 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "122149",
@@ -1516,12 +1548,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 30,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 5,
     "startDate": "7th Oct, 2026",
+    "endDate": "8th Oct,2026",
     "startTime": "09:00 am",
     "endTime": "11:55 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "on",
     "submittedAt": "2026-10-08 13:02:25"
   },
   {
@@ -1541,12 +1575,15 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 40,
-    "totalQuestions": 10,
+    "totalQuestions": 7,
     "totalMarks": 20,
     "startDate": "8th Oct, 2026",
+    "endDate": "8th Oct,2026",
     "startTime": "12:40 pm",
     "endTime": "01:20 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "off",
+    "studentScore": 0,
     "submittedAt": "2026-10-08 12:50:17"
   },
   {
@@ -1566,11 +1603,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 30,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "9th Oct, 2026",
+    "endDate": "12th Oct,2026",
     "startTime": "07:00 pm",
-    "endTime": "08:00 pm"
+    "endTime": "08:00 pm",
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "off"
   },
   {
     "examId": "122447",
@@ -1589,11 +1629,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 8,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 5,
     "startDate": "10th Oct, 2026",
+    "endDate": "10th Oct,2026",
     "startTime": "11:00 am",
-    "endTime": "11:20 am"
+    "endTime": "11:20 am",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "122720",
@@ -1615,8 +1658,11 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "13th Oct, 2026",
+    "endDate": "14th Oct,2026",
     "startTime": "03:30 pm",
-    "endTime": "05:00 pm"
+    "endTime": "05:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "122915",
@@ -1635,11 +1681,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 40,
-    "totalQuestions": 10,
+    "totalQuestions": 7,
     "totalMarks": 10,
     "startDate": "15th Oct, 2026",
+    "endDate": "15th Oct,2026",
     "startTime": "12:40 pm",
-    "endTime": "01:20 pm"
+    "endTime": "01:20 pm",
+    "viewStudentMarksAllowed": "off",
+    "viewStudentPerformanceAllowed": "off"
   },
   {
     "examId": "123282",
@@ -1658,11 +1707,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 120,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "21st Oct, 2026",
+    "endDate": "23rd Oct,2026",
     "startTime": "03:00 pm",
-    "endTime": "05:00 pm"
+    "endTime": "05:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "123285",
@@ -1681,11 +1733,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 119,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "21st Oct, 2026",
+    "endDate": "23rd Oct,2026",
     "startTime": "03:00 pm",
-    "endTime": "05:00 pm"
+    "endTime": "05:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "123287",
@@ -1704,11 +1759,14 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 120,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 10,
     "startDate": "21st Oct, 2026",
+    "endDate": "23rd Oct,2026",
     "startTime": "03:00 pm",
-    "endTime": "05:00 pm"
+    "endTime": "05:00 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "off"
   },
   {
     "examId": "123412",
@@ -1730,9 +1788,12 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "22nd Oct, 2026",
+    "endDate": "22nd Oct,2026",
     "startTime": "12:00 pm",
     "endTime": "12:30 pm",
-    "studentScore": 10,
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on",
+    "studentScore": 8,
     "submittedAt": "2026-10-22 12:13:48"
   },
   {
@@ -1755,8 +1816,11 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "24th Oct, 2026",
+    "endDate": "24th Oct,2026",
     "startTime": "11:20 am",
-    "endTime": "11:45 am"
+    "endTime": "11:45 am",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "125814",
@@ -1775,17 +1839,20 @@ const EXAMS = [
     ],
     "hasQuestions": true,
     "durationMinutes": 30,
-    "totalQuestions": 10,
+    "totalQuestions": 5,
     "totalMarks": 5,
     "startDate": "19th Nov, 2026",
+    "endDate": "20th Nov,2026",
     "startTime": "09:00 am",
-    "endTime": "11:55 pm"
+    "endTime": "11:55 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on"
   },
   {
     "examId": "125821",
     "examName": "unit 2",
     "examSyllabus": "stack And Queue",
-    "completionStatus": "0",
+    "completionStatus": "1",
     "subjectId": "240847",
     "subjectName": "DATA STRUCTURE",
     "subjectType": "Theory",
@@ -1801,8 +1868,13 @@ const EXAMS = [
     "totalQuestions": 10,
     "totalMarks": 10,
     "startDate": "19th Nov, 2026",
+    "endDate": "21st Nov,2026",
     "startTime": "09:00 am",
-    "endTime": "11:55 pm"
+    "endTime": "11:55 pm",
+    "viewStudentMarksAllowed": "on",
+    "viewStudentPerformanceAllowed": "on",
+    "studentScore": 9,
+    "submittedAt": "2026-11-19 13:23:57"
   }
 ];
 
@@ -2325,9 +2397,81 @@ const EXAM_QUESTIONS_OOPM = [
   }
 ];
 
+const EXAM_QUESTIONS_125814 = [
+  {
+    "qid": "4014001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In a singly circular linked list, what does the next pointer of the last node point to?",
+    "answers": [
+      { "id": "4945001", "text": "NULL" },
+      { "id": "4945002", "text": "The first (head) node" },
+      { "id": "4945003", "text": "The previous node" },
+      { "id": "4945004", "text": "Itself only when there are multiple nodes" }
+    ],
+    "correctAnswerId": "4945002"
+  },
+  {
+    "qid": "4014002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What condition checks if a circular linked list has only a single node (pointed to by head)?",
+    "answers": [
+      { "id": "4945005", "text": "head.next == NULL" },
+      { "id": "4945006", "text": "head.next == head" },
+      { "id": "4945007", "text": "head == NULL" },
+      { "id": "4945008", "text": "head.prev == NULL" }
+    ],
+    "correctAnswerId": "4945006"
+  },
+  {
+    "qid": "4014003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the time complexity of inserting a node at the end of a circular linked list if only the head pointer is maintained?",
+    "answers": [
+      { "id": "4945009", "text": "O(1)" },
+      { "id": "4945010", "text": "O(log n)" },
+      { "id": "4945011", "text": "O(n)" },
+      { "id": "4945012", "text": "O(n^2)" }
+    ],
+    "correctAnswerId": "4945011"
+  },
+  {
+    "qid": "4014004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which pointer gives O(1) insertion at both the beginning and end of a singly circular linked list?",
+    "answers": [
+      { "id": "4945013", "text": "Maintaining only the head pointer" },
+      { "id": "4945014", "text": "Maintaining the tail (last) pointer" },
+      { "id": "4945015", "text": "Maintaining a middle pointer" },
+      { "id": "4945016", "text": "None, O(1) insertion is impossible" }
+    ],
+    "correctAnswerId": "4945014"
+  },
+  {
+    "qid": "4014005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which real-world application commonly uses a circular linked list?",
+    "answers": [
+      { "id": "4945017", "text": "Undo/Redo stack in a text editor" },
+      { "id": "4945018", "text": "Round-robin CPU process scheduling" },
+      { "id": "4945019", "text": "Binary search on sorted arrays" },
+      { "id": "4945020", "text": "Depth-First Search recursion stack" }
+    ],
+    "correctAnswerId": "4945018"
+  }
+];
+
 function getExamQuestions(examId, subjectName = '') {
+  const id = String(examId || '');
   const sName = String(subjectName || '').toUpperCase();
-  if (examId === '125821' || sName.includes('DATA STRUCTURE')) {
+  if (id === '125814') {
+    return EXAM_QUESTIONS_125814;
+  }
+  if (id === '125821' || sName.includes('DATA STRUCTURE')) {
     return EXAM_QUESTIONS_125821;
   }
   if (sName.includes('AI') || sName.includes('ARTIFICIAL') || sName.includes('MACHINE')) {
@@ -2954,6 +3098,7 @@ const NAVIGATION_MODULES = [
 ];
 
 module.exports = {
+  EXAM_QUESTIONS_125814,
   EXAM_QUESTIONS_AI,
   EXAM_QUESTIONS_OOPM,
   getExamQuestions,

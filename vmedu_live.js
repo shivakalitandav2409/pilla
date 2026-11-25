@@ -435,10 +435,245 @@ async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, 
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Live Online Exam Engine (ported from Test.har)                     */
+/* ------------------------------------------------------------------ */
+async function generateLearnerToken(uid, email = '') {
+  if (!uid) return null;
+  const tokenData = { source: 'web', uid: Number(uid), email: email || '', role: 'learner' };
+  const params = new URLSearchParams();
+  params.append('GenerateAccessToken', 'true');
+  params.append('data', Buffer.from(JSON.stringify(tokenData)).toString('base64'));
+  try {
+    const res = await fetch('https://portal.vmedulife.com/api/tokenmanagement.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/OnlineExam/AssignedModulesList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const json = await res.json().catch(() => ({}));
+    if (json && json.status === 'success' && json.data && json.data.user_token) {
+      return json.data.user_token;
+    }
+  } catch {}
+  return null;
+}
+
+async function getLearnerAuthToken(user, forceRefresh = false) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return null;
+  if (!forceRefresh && user.learnerToken) return user.learnerToken;
+  const tok = await generateLearnerToken(user.stuid, user.email);
+  if (tok) user.learnerToken = tok;
+  return tok;
+}
+
+async function postOnlineExamApi(user, actionName, dataObj) {
+  let token = await getLearnerAuthToken(user);
+  if (!token) return null;
+
+  const tokenParam = Buffer.from(JSON.stringify({
+    source: 'web',
+    uid: Number(user.stuid),
+    role: 'learner'
+  })).toString('base64');
+
+  const sendReq = async (authTok) => {
+    const params = new URLSearchParams();
+    params.append(actionName, 'true');
+    params.append('data', JSON.stringify(dataObj));
+    params.append('tokenInputParameter', tokenParam);
+    const res = await fetch('https://portal.vmedulife.com/api/instructor/onlineExam.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + authTok,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/OnlineExam/AssignedModulesList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const text = await res.text();
+    return JSON.parse(text.trim());
+  };
+
+  let json = await sendReq(token);
+  if (json && json.message === 'Unauthorized request.') {
+    token = await getLearnerAuthToken(user, true);
+    if (token) {
+      json = await sendReq(token);
+    }
+  }
+  return json;
+}
+
+function mapPortalExam(e) {
+  const isComp = String(e.completionStatus) === '1';
+  const marksAllowed = e.viewStudentMarksAllowed || 'off';
+  const rawScore = Number(e.obtainedScore);
+  const hasVisibleScore = isComp && (marksAllowed === 'on' || rawScore > 0);
+  const subTime = e.studentExamSubmissionTime && e.studentExamSubmissionTime !== '0000-00-00 00:00:00'
+    ? e.studentExamSubmissionTime
+    : undefined;
+
+  return {
+    examId: String(e.examId),
+    examName: e.examName || 'Examination',
+    examSyllabus: e.examSyllabus || 'General',
+    completionStatus: isComp ? '1' : '0',
+    subjectId: String(e.subjectId || ''),
+    subjectName: e.subjectName || 'Subject',
+    subjectType: e.subjectType || 'Theory',
+    subjectChoice: e.subjectChoice || 'regular',
+    subjectFaculties: Array.isArray(e.subjectFaculties) ? e.subjectFaculties : [],
+    hasQuestions: true,
+    durationMinutes: Number(e.duration) || 30,
+    totalQuestions: Number(e.displayQuestionNumber) || 10,
+    totalMarks: Number(e.examMarks) || 10,
+    startDate: e.examStartDate || '',
+    endDate: e.examEndDate || '',
+    startTime: e.startTime || '',
+    endTime: e.endTime || '',
+    viewStudentMarksAllowed: marksAllowed,
+    viewStudentPerformanceAllowed: e.viewStudentPerformanceAllowed || 'off',
+    allowStartExam: Boolean(e.allowStartExam),
+    startExamLink: e.startExamLink || '',
+    studentExamStartTime: e.studentExamStartTime || '',
+    submittedAtFormatted: e.studentExamSubmissionTimeFormatted || '',
+    ...(hasVisibleScore ? { studentScore: rawScore } : {}),
+    ...(subTime ? { submittedAt: subTime } : {}),
+    source: 'live'
+  };
+}
+
+async function getLiveStudentExams(user) {
+  if (!user || !user.stuid || !user.sid || !user.groupid || user.username === 'DEMO123') return null;
+  try {
+    const batchIds = Array.isArray(user.batchIds) && user.batchIds.length
+      ? user.batchIds.map(String)
+      : [String(user.buid || '70134')];
+
+    const json = await postOnlineExamApi(user, 'getStudentGroupAndBatchwiseOnlineExams', {
+      sid: String(user.sid),
+      groupId: String(user.groupid),
+      studentId: Number(user.stuid),
+      acayr: Number(user.acayr || 12),
+      offset: 0,
+      limit: 100,
+      examId: 0,
+      assignedBatchIds: batchIds
+    });
+
+    if (!json || json.success !== 'true' || !json.data || typeof json.data !== 'object') {
+      return null;
+    }
+
+    const exams = Object.values(json.data).map(mapPortalExam);
+    return {
+      exams,
+      pendingIds: json.pendingExamIds || [],
+      completedIds: json.completedExamIds || []
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getLiveExamQuestions(user, examId) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return null;
+  try {
+    const json = await postOnlineExamApi(user, 'getStudentAssignedOnlineExamQuestionList', {
+      studentId: Number(user.stuid),
+      examId: Number(examId)
+    });
+    if (!json) return null;
+    if (json.success !== 'true' || !json.data || Array.isArray(json.data)) {
+      return { questions: null, message: json.message || 'Live questions unavailable', liveStatus: 'fallback' };
+    }
+    const entries = Object.entries(json.data);
+    if (!entries.length) {
+      return { questions: null, message: json.message || 'No live questions returned', liveStatus: 'fallback' };
+    }
+    const questions = entries.map(([qid, q]) => ({
+      qid: String(qid),
+      marks: Number(q.marks) || 1,
+      type: (q.question && q.question.qType) || 'MULTIPLE-CHOICE',
+      text: (q.question && q.question.qText) || '',
+      image: (q.question && q.question.qImage) || '',
+      answers: (q.answers || []).map(a => ({
+        id: String(a.aUID),
+        text: a.aText || '',
+        image: a.aImage || ''
+      })),
+      correctAnswerId: null
+    }));
+    return {
+      questions,
+      remainingTime: Number(json.remainingTime) || 1800,
+      isAutoSaved: json.isAutoSaved === 'true',
+      liveStatus: 'live'
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function startLiveExam(user, examId) {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const startTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const json = await postOnlineExamApi(user, 'updateStudentOnlineExamStartTime', {
+      studentId: Number(user.stuid),
+      examId: Number(examId),
+      startTime,
+      source: 'WEB'
+    });
+    const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
+async function submitLiveExam(user, examId, answers, remainingTime = 1660, submissionType = 'submit') {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const perfArr = Object.entries(answers || {}).map(([q, a]) => ({
+      q: String(q),
+      a: [String(a || '')]
+    }));
+    const json = await postOnlineExamApi(user, 'submitOnlineExam', {
+      studentId: Number(user.stuid),
+      examId: Number(examId),
+      performance: JSON.stringify(perfArr),
+      score: 0,
+      remainingTime: Number(remainingTime) || 1660,
+      iid: 987,
+      submissionType: submissionType === 'auto-save' ? 'Auto-save' : 'submit'
+    });
+    const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
 module.exports = {
   loadSessionCookie,
   getFacultyAuth,
   fetchGroupTimetable,
   getLiveStudentSessions,
-  updateLiveAttendance
+  updateLiveAttendance,
+  generateLearnerToken,
+  getLearnerAuthToken,
+  getLiveStudentExams,
+  getLiveExamQuestions,
+  startLiveExam,
+  submitLiveExam
 };
