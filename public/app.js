@@ -261,13 +261,13 @@ async function loadProfile() {
 
   // Institutional & Academic info
   if (p.institute) {
-    $('#icInstitute').textContent = p.institute.name;
-    $('#icLocation').textContent = `${p.institute.location} (${p.institute.shortName})`;
+    if ($('#icInstitute')) $('#icInstitute').textContent = p.institute.name;
+    if ($('#icLocation')) $('#icLocation').textContent = `${p.institute.location} (${p.institute.shortName})`;
   }
-  if (p.mentor) {
+  if (p.mentor && $('#icMentor')) {
     $('#icMentor').textContent = p.mentor.mentorName;
   }
-  if (p.fees) {
+  if (p.fees && $('#icFees')) {
     $('#icFees').textContent = `₹${p.fees.totalAmount.toLocaleString()} Paid`;
   }
 }
@@ -532,16 +532,28 @@ $$('#modeSeg .seg-btn').forEach(b => b.addEventListener('click', () => {
   const isSubj = b.dataset.mode === 'subject';
   $$('.date-field').forEach(el => el.classList.toggle('hidden', isSubj));
   $('.subject-field').classList.toggle('hidden', !isSubj);
+  loadSessions();
 }));
 
 $('#loadBtn').addEventListener('click', loadSessions);
+$('#subject').addEventListener('change', loadSessions);
+$('#dateFrom').addEventListener('change', loadSessions);
+$('#dateTo').addEventListener('change', loadSessions);
 
 $$('.preset-btn').forEach(b => {
   b.addEventListener('click', () => {
     const p = b.dataset.preset;
-    if (p === 'captured') {
-      $('#dateFrom').value = '2026-09-01';
-      $('#dateTo').value = '2026-09-15';
+    const now = new Date();
+    if (p === '7d') {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 7);
+      $('#dateFrom').value = iso(from);
+      $('#dateTo').value = iso(now);
+    } else if (p === '30d') {
+      const from = new Date(now);
+      from.setDate(now.getDate() - 30);
+      $('#dateFrom').value = iso(from);
+      $('#dateTo').value = iso(now);
     } else if (p === 'all') {
       $('#dateFrom').value = '2000-01-01';
       $('#dateTo').value = '2099-12-31';
