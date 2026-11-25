@@ -15,8 +15,7 @@ node server.js
 ```
 
 Then visit:
-- **Modern UI**: [http://localhost:3000](http://localhost:3000)
-- **Classic UI**: [http://localhost:3000/classic/](http://localhost:3000/classic/)
+- **Portal URL**: [http://localhost:3000](http://localhost:3000)
 
 ### Integrated Accounts (From HAR Captures)
 
@@ -110,7 +109,6 @@ npx wrangler deploy
 ```
 
 - **Live URL**: [https://vm.shivangsaxena1011.workers.dev](https://vm.shivangsaxena1011.workers.dev)
-- **Classic UI**: [https://vm.shivangsaxena1011.workers.dev/classic/index.html](https://vm.shivangsaxena1011.workers.dev/classic/index.html)
 
 ---
 
@@ -121,11 +119,9 @@ npx wrangler deploy
 ├── worker.js            # Cloudflare Worker entry point (Edge APIs + JWT)
 ├── wrangler.jsonc       # Cloudflare Workers configuration (Assets + nodejs_compat)
 ├── data.js              # Complete integrated dataset from both HAR files
-├── public/              # Modern UI
+├── public/              # Web UI
 │   ├── index.html       # Single-page interface with exam modal & notifications
 │   ├── app.js           # Interactive client logic
-│   ├── styles.css       # Responsive theme styling
-│   └── classic/         # Classic fallback UI served under /classic/
-├── public-classic/      # Classic fallback UI source
+│   └── styles.css       # Responsive theme styling
 └── package.json
 ```

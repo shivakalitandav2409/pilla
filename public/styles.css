@@ -123,10 +123,6 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
 .nav-item.active { background: var(--accent-soft); color: #a5b4fc; }
 .side-badge { margin-left: auto; background: var(--accent); color: #fff; font-size: .72rem; padding: 2px 7px; border-radius: 10px; font-weight: 700; }
 
-.side-footer { padding: 10px 4px; }
-.classic-btn { display: flex; align-items: center; gap: 8px; font-size: .84rem; color: var(--muted); padding: 8px 10px; border-radius: 8px; font-weight: 600; transition: color .15s; }
-.classic-btn:hover { color: #818cf8; background: var(--surface2); }
-
 .side-user { display: flex; align-items: center; gap: 11px; padding: 12px; border-top: 1px solid var(--line2); margin-top: 8px; }
 .side-avatar, .side-user-info { min-width: 0; }
 .side-avatar {

@@ -35,7 +35,6 @@ const {
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'local-demo-secret-not-for-production-pilla';
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const PUBLIC_CLASSIC_DIR = path.join(__dirname, 'public-classic');
 
 /* ------------------------------------------------------------------ */
 /* Minimal HS256 JWT (dependency-free)                                 */
@@ -1082,7 +1081,7 @@ function handleVmedulifeApi(req, res, url, body) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Static File Serving (Modern & Classic)                             */
+/* Static File Serving                                                */
 /* ------------------------------------------------------------------ */
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -1097,17 +1096,15 @@ const MIME = {
 };
 
 function serveStatic(req, res, url) {
-  let isClassic = url.pathname.startsWith('/classic');
-  let baseDir = isClassic ? PUBLIC_CLASSIC_DIR : PUBLIC_DIR;
-  let p = isClassic ? url.pathname.replace(/^\/classic\/?/, '') : url.pathname;
+  let p = url.pathname;
   if (!p || p === '/') p = 'index.html';
 
-  const filePath = path.join(baseDir, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
-  if (!filePath.startsWith(baseDir)) return send(res, 403, { detail: 'Forbidden' });
+  const filePath = path.join(PUBLIC_DIR, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
+  if (!filePath.startsWith(PUBLIC_DIR)) return send(res, 403, { detail: 'Forbidden' });
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      fs.readFile(path.join(baseDir, 'index.html'), (e2, html) => {
+      fs.readFile(path.join(PUBLIC_DIR, 'index.html'), (e2, html) => {
         if (e2) return send(res, 404, { detail: 'Not found' });
         res.writeHead(200, { 'Content-Type': MIME['.html'] });
         res.end(html);
@@ -1145,8 +1142,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`\n======================================================`);
   console.log(`  Pilla — Attendance & Student Portal running at:`);
-  console.log(`    Modern UI:   http://localhost:${PORT}`);
-  console.log(`    Classic UI:  http://localhost:${PORT}/classic/`);
+  console.log(`    Portal URL:  http://localhost:${PORT}`);
   console.log(`======================================================`);
   console.log(`  Features:`);
   console.log(`    • Offline Seeded Accounts: STOIST25963, STOIST251161, DEMO123`);
