@@ -807,7 +807,8 @@ async function handleApi(req, res, url) {
       ? getExamQuestions(examId, exam?.subjectName)
       : DB.examQuestions);
 
-    const hasAnswerKey = questions.length > 0 && questions.every(q => Boolean(q.correctAnswerId));
+    const hasMatchingQids = Object.keys(answers).length === 0 || questions.some(q => Object.prototype.hasOwnProperty.call(answers, q.qid));
+    const hasAnswerKey = hasMatchingQids && questions.length > 0 && questions.every(q => Boolean(q.correctAnswerId));
     let score = 0;
     let totalMarks = 0;
     const questionResults = [];

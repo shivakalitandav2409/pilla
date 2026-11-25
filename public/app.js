@@ -999,8 +999,10 @@ function renderExamReviewList(questions, submittedAnswers = null) {
   const hasSubmittedMap = submittedAnswers && Object.keys(submittedAnswers).length > 0;
   return (questions || []).map((q, idx) => {
     const qMarks = Number(q.marks) || 1;
+    const qType = String(q.type || 'MULTIPLE-CHOICE').toUpperCase();
     const hasKey = Boolean(q.correctAnswerId);
     const selectedId = hasSubmittedMap ? submittedAnswers[q.qid] : q.correctAnswerId;
+    const selectedList = String(selectedId ?? '').split(',').map(s => s.trim()).filter(Boolean);
     const isCorrect = !hasKey
       ? true
       : (hasSubmittedMap
@@ -1015,13 +1017,20 @@ function renderExamReviewList(questions, submittedAnswers = null) {
         </div>
         ${hasSubmittedMap ? `
           <div style="font-size:.82rem;font-weight:600;margin-bottom:8px;color:${isCorrect ? 'var(--green)' : 'var(--red)'};">
-            ${!hasKey ? (selectedId ? '✓ Response Recorded' : 'Not Answered') : (isCorrect ? `+${qMarks} Mark${qMarks === 1 ? '' : 's'} (Correct)` : `0 Marks (${selectedId ? 'Incorrect' : 'Not Answered'})`)}
+            ${!hasKey ? (selectedList.length || selectedId ? '✓ Response Recorded' : 'Not Answered') : (isCorrect ? `+${qMarks} Mark${qMarks === 1 ? '' : 's'} (Correct)` : `0 Marks (${selectedList.length ? 'Incorrect' : 'Not Answered'})`)}
           </div>
         ` : ''}
+        ${qType === 'ONE-WORD' ? `
+          <div class="qr-opt-list">
+            <div class="qr-opt ${selectedId ? 'is-correct' : ''}">
+              <span>Your Answer: <b>${esc(selectedId || 'Not Answered')}</b></span>
+            </div>
+          </div>
+        ` : `
         <div class="qr-opt-list">
           ${(q.answers || []).map(a => {
             const isRightOpt = hasKey && String(a.id) === String(q.correctAnswerId);
-            const isUserChoice = hasSubmittedMap && selectedId !== undefined && selectedId !== null && String(a.id) === String(selectedId);
+            const isUserChoice = hasSubmittedMap && selectedList.includes(String(a.id));
             const optClass = isRightOpt || (!hasKey && isUserChoice) ? 'is-correct' : (isUserChoice ? 'user-wrong' : '');
             let badgeHtml = '';
             if (!hasKey && isUserChoice) {
@@ -1041,6 +1050,7 @@ function renderExamReviewList(questions, submittedAnswers = null) {
             `;
           }).join('')}
         </div>
+        `}
       </div>
     `;
   }).join('');
