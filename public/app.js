@@ -453,7 +453,9 @@ function renderGauge(m) {
 function renderKpis(m) {
   if (!m) return;
   $('#kPresent').textContent = m.present_count;
+  if ($('#kPresentSub')) $('#kPresentSub').textContent = `Present · ${m.present_pct}%`;
   $('#kAbsent').textContent = m.absent_count;
+  if ($('#kAbsentSub')) $('#kAbsentSub').textContent = `Absent · ${m.absent_pct}%`;
   $('#kTotal').textContent = m.total_sessions;
   $('#kAvg').textContent = m.average_pct + '%';
 }
@@ -469,11 +471,12 @@ function subjectStats() {
     e.total++;
     if (s.attendance_status === 'Present') e.present++;
   }
-  return [...map.entries()].map(([id, e]) => ({
-    id,
-    ...e,
-    pct: e.total ? Math.round((e.present / e.total) * 1000) / 10 : 0
-  })).sort((a, b) => b.pct - a.pct);
+  return [...map.entries()].map(([id, e]) => {
+    const absent = e.total - e.present;
+    const pct = e.total ? Math.round((e.present / e.total) * 1000) / 10 : 0;
+    const absentPct = e.total ? Math.round((absent / e.total) * 1000) / 10 : 0;
+    return { id, ...e, absent, pct, absentPct };
+  }).sort((a, b) => b.pct - a.pct);
 }
 
 function renderSubjectBars() {
@@ -488,7 +491,7 @@ function renderSubjectBars() {
           ${esc(name)} <small>${esc(code)}${meta ? ' · ' + esc(meta) : ''}</small>
         </div>
         <div class="sbar-pct" style="color:${color}">
-          ${st.pct}% <span class="muted" style="font-weight:500">(${st.present}/${st.total})</span>
+          ${st.pct}% <span class="muted" style="font-weight:500">Present · ${st.absentPct}% Absent (${st.present}/${st.total})</span>
         </div>
         <div class="sbar-track">
           <div class="sbar-fill" style="width:${st.pct}%;background:${color}"></div>
@@ -543,6 +546,16 @@ async function loadSessions() {
 }
 
 function renderTimeline(container, items) {
+  if (container === $('#sessionTimeline') && $('#sessionSummary')) {
+    const marked = (items || []).filter(s => s.attendance_status === 'Present' || s.attendance_status === 'Absent');
+    const pres = marked.filter(s => s.attendance_status === 'Present').length;
+    const abs = marked.length - pres;
+    const presPct = marked.length ? Math.round((pres / marked.length) * 1000) / 10 : 0;
+    const absPct = marked.length ? Math.round((abs / marked.length) * 1000) / 10 : 0;
+    $('#sessionSummary').innerHTML = marked.length
+      ? `Showing ${items.length} sessions · <span style="color:var(--green)">Present: ${pres} (${presPct}%)</span> · <span style="color:var(--red)">Absent: ${abs} (${absPct}%)</span>`
+      : '';
+  }
   if (!items || !items.length) {
     container.innerHTML = `
       <div class="card empty-card">
@@ -641,7 +654,7 @@ async function mark(act, id, idx, sw) {
 function renderSubjectsView() {
   const stats = new Map(subjectStats().map(s => [s.id, s]));
   $('#subjectGrid').innerHTML = state.subjects.map(s => {
-    const st = stats.get(s.subject_id) || { pct: 0, present: 0, total: 0 };
+    const st = stats.get(s.subject_id) || { pct: 0, absentPct: 0, present: 0, absent: 0, total: 0 };
     const { name, code, meta } = splitName(s.display_name || s.subject_name);
     const color = st.pct >= 75 ? 'var(--green)' : st.pct >= 50 ? 'var(--amber)' : 'var(--red)';
     return `
@@ -655,7 +668,7 @@ function renderSubjectsView() {
         </div>
         <div class="pc-line">
           <span class="big-pct" style="color:${color}">${st.pct}%</span>
-          <span>${st.present}/${st.total} attended</span>
+          <span>${st.present}/${st.total} present · ${st.absentPct}% absent</span>
         </div>
         <div class="sbar-track">
           <div class="sbar-fill" style="width:${st.pct}%;background:${color}"></div>

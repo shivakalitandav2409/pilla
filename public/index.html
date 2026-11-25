@@ -105,8 +105,8 @@
             <div class="gauge-foot" id="gaugeFoot"></div>
           </div>
           <div class="kpis">
-            <div class="kpi card"><span class="kpi-ico ok">✓</span><div><b id="kPresent">0</b><small>Present Sessions</small></div></div>
-            <div class="kpi card"><span class="kpi-ico bad">✕</span><div><b id="kAbsent">0</b><small>Absent Sessions</small></div></div>
+            <div class="kpi card"><span class="kpi-ico ok">✓</span><div><b id="kPresent">0</b><small id="kPresentSub">Present Sessions · 0%</small></div></div>
+            <div class="kpi card"><span class="kpi-ico bad">✕</span><div><b id="kAbsent">0</b><small id="kAbsentSub">Absent Sessions · 0%</small></div></div>
             <div class="kpi card"><span class="kpi-ico neutral">Σ</span><div><b id="kTotal">0</b><small>Total Sessions</small></div></div>
             <div class="kpi card"><span class="kpi-ico accent">%</span><div><b id="kAvg">0%</b><small>Subject Average</small></div></div>
           </div>
@@ -226,6 +226,7 @@
             <button class="preset-btn" data-preset="all">All Time</button>
           </div>
         </div>
+        <div id="sessionSummary" class="muted" style="font-size:.86rem;font-weight:600;margin-bottom:12px;"></div>
         <div id="sessionTimeline" class="timeline big"></div>
       </section>
 
