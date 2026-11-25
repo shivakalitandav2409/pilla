@@ -557,26 +557,59 @@ async function getLiveStudentExams(user) {
       ? user.batchIds.map(String)
       : [String(user.buid || '70134')];
 
-    const json = await postOnlineExamApi(user, 'getStudentGroupAndBatchwiseOnlineExams', {
-      sid: String(user.sid),
-      groupId: String(user.groupid),
-      studentId: Number(user.stuid),
-      acayr: Number(user.acayr || 12),
-      offset: 0,
-      limit: 100,
-      examId: 0,
-      assignedBatchIds: batchIds
-    });
+    const allExamsMap = new Map();
+    const pendingSet = new Set();
+    const completedSet = new Set();
+    const limit = 50;
 
-    if (!json || json.success !== 'true' || !json.data || typeof json.data !== 'object') {
-      return null;
+    // 1. Paginate group + batchwise exams
+    for (let offset = 0; offset < 500; offset += limit) {
+      const json = await postOnlineExamApi(user, 'getStudentGroupAndBatchwiseOnlineExams', {
+        sid: String(user.sid),
+        groupId: String(user.groupid),
+        studentId: Number(user.stuid),
+        acayr: Number(user.acayr || 12),
+        offset,
+        limit,
+        examId: 0,
+        assignedBatchIds: batchIds
+      });
+      if (!json || json.success !== 'true' || !json.data || typeof json.data !== 'object') break;
+      const entries = Object.values(json.data);
+      entries.forEach(e => allExamsMap.set(String(e.examId), mapPortalExam(e)));
+      (json.pendingExamIds || []).forEach(id => pendingSet.add(String(id)));
+      (json.completedExamIds || []).forEach(id => completedSet.add(String(id)));
+      const total = Number(json.totalRecords) || entries.length;
+      if (offset + entries.length >= total || entries.length === 0) break;
     }
 
-    const exams = Object.values(json.data).map(mapPortalExam);
+    // 2. Also fetch elective subject exams if student has elective groups
+    if (Array.isArray(user.electiveGroupIds) && user.electiveGroupIds.length) {
+      const elJson = await postOnlineExamApi(user, 'getStudentElectiveSubjectOnlineExams', {
+        groupIdArray: user.electiveGroupIds.map(String),
+        studentId: Number(user.stuid),
+        acayr: Number(user.acayr || 12),
+        offset: 0,
+        limit: 100,
+        examId: 0,
+        assignedBatchIds: batchIds
+      });
+      if (elJson && elJson.success === 'true' && elJson.data && typeof elJson.data === 'object') {
+        Object.values(elJson.data).forEach(e => {
+          if (!allExamsMap.has(String(e.examId))) {
+            allExamsMap.set(String(e.examId), mapPortalExam(e));
+          }
+        });
+        (elJson.pendingExamIds || []).forEach(id => pendingSet.add(String(id)));
+        (elJson.completedExamIds || []).forEach(id => completedSet.add(String(id)));
+      }
+    }
+
+    if (allExamsMap.size === 0) return null;
     return {
-      exams,
-      pendingIds: json.pendingExamIds || [],
-      completedIds: json.completedExamIds || []
+      exams: [...allExamsMap.values()],
+      pendingIds: [...pendingSet],
+      completedIds: [...completedSet]
     };
   } catch {
     return null;
@@ -594,27 +627,37 @@ async function getLiveExamQuestions(user, examId) {
     if (json.success !== 'true' || !json.data || Array.isArray(json.data)) {
       return { questions: null, message: json.message || 'Live questions unavailable', liveStatus: 'fallback' };
     }
-    const entries = Object.entries(json.data);
-    if (!entries.length) {
+    const order = Array.isArray(json.shuffleQid) && json.shuffleQid.length
+      ? json.shuffleQid.map(String).filter(qid => json.data[qid])
+      : Object.keys(json.data);
+    if (!order.length) {
       return { questions: null, message: json.message || 'No live questions returned', liveStatus: 'fallback' };
     }
-    const questions = entries.map(([qid, q]) => ({
-      qid: String(qid),
-      marks: Number(q.marks) || 1,
-      type: (q.question && q.question.qType) || 'MULTIPLE-CHOICE',
-      text: (q.question && q.question.qText) || '',
-      image: (q.question && q.question.qImage) || '',
-      answers: (q.answers || []).map(a => ({
+    const questions = order.map(qid => {
+      const q = json.data[qid];
+      let answers = (q.answers || []).map(a => ({
         id: String(a.aUID),
         text: a.aText || '',
         image: a.aImage || ''
-      })),
-      correctAnswerId: null
-    }));
+      }));
+      if (String(q.shuffle_answers) === '1' && answers.length > 1) {
+        answers = [...answers].sort(() => Math.random() - 0.5);
+      }
+      return {
+        qid: String(qid),
+        marks: Number(q.marks) || 1,
+        type: (q.question && q.question.qType) || 'MULTIPLE-CHOICE',
+        text: (q.question && q.question.qText) || '',
+        image: (q.question && q.question.qImage) || '',
+        answers,
+        correctAnswerId: null
+      };
+    });
     return {
       questions,
       remainingTime: Number(json.remainingTime) || 1800,
       isAutoSaved: json.isAutoSaved === 'true',
+      configuration: json.configuration || {},
       liveStatus: 'live'
     };
   } catch {
@@ -641,21 +684,27 @@ async function startLiveExam(user, examId) {
   }
 }
 
-async function submitLiveExam(user, examId, answers, remainingTime = 1660, submissionType = 'submit') {
+async function submitLiveExam(user, examId, answers, remainingTime = 194, submissionType = 'submit') {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
-    const perfArr = Object.entries(answers || {}).map(([q, a]) => ({
-      q: String(q),
-      a: [String(a || '')]
-    }));
+    const perfArr = Object.entries(answers || {}).map(([q, a]) => {
+      const aArr = Array.isArray(a)
+        ? a.map(String)
+        : String(a ?? '').split(',').map(s => s.trim()).filter(Boolean);
+      return {
+        q: String(q),
+        a: aArr.length ? aArr : ['']
+      };
+    });
+    const subType = submissionType === 'auto-save' || submissionType === 'Auto-save' ? 'Auto-save' : 'submit';
     const json = await postOnlineExamApi(user, 'submitOnlineExam', {
       studentId: Number(user.stuid),
       examId: Number(examId),
       performance: JSON.stringify(perfArr),
       score: 0,
-      remainingTime: Number(remainingTime) || 1660,
+      remainingTime: Number(remainingTime) || 194,
       iid: 987,
-      submissionType: submissionType === 'auto-save' ? 'Auto-save' : 'submit'
+      submissionType: subType
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
     return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };

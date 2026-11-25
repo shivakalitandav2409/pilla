@@ -345,6 +345,9 @@ async function handleApi(req, res, url) {
       const batchIds = (s.studentAssignedBatches && Array.isArray(s.studentAssignedBatches.ubid_array) && s.studentAssignedBatches.ubid_array.length)
         ? s.studentAssignedBatches.ubid_array.map(String)
         : (group.buid ? [String(group.buid)] : ['70134']);
+      const electiveGroupIds = (s.electiveBatches && s.electiveBatches.data && typeof s.electiveBatches.data === 'object')
+        ? [...new Set(Object.values(s.electiveBatches.data).map(b => b.groupid).filter(Boolean).map(String))]
+        : [];
       const templateUser = USERS[username] || (sid === 1075 ? USERS['STOIST251161'] : USERS['STOIST25963']);
       const matchingSubjects = templateUser ? templateUser.subjects : USERS['STOIST25963'].subjects;
 
@@ -361,6 +364,7 @@ async function handleApi(req, res, url) {
         groupid: groupid,
         buid: Number(batchIds[0]) || 70134,
         batchIds: batchIds,
+        electiveGroupIds: electiveGroupIds,
         acayr: Number(s.Acayear) || 12,
         learnerToken: (td.data && td.data.user_token) || '',
         syncToken: (td.data && td.data.sync_token) || '',
@@ -719,7 +723,7 @@ async function handleApi(req, res, url) {
     let liveMessage = '';
     let remainingTime = (exam && exam.durationMinutes ? exam.durationMinutes : 30) * 60;
 
-    if (vmeduLive && typeof vmeduLive.getLiveExamQuestions === 'function' && user.username !== 'DEMO123' && (!exam || exam.completionStatus !== '1')) {
+    if (vmeduLive && typeof vmeduLive.getLiveExamQuestions === 'function' && user.username !== 'DEMO123') {
       try {
         const liveQ = await vmeduLive.getLiveExamQuestions(user, examId);
         if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
@@ -760,13 +764,11 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 10.1 Update Student Online Exam Start Time
+  // 10.1 Update Student Online Exam Start Time (always forward to live backend)
   if (route === '/api/exam/start' && req.method === 'POST') {
     const examId = String(body.exam_id || body.examId || '');
-    const userExams = getUserExams(username);
-    const exam = userExams.find(e => String(e.examId) === examId);
     let upstream_status = 'simulated';
-    if (vmeduLive && typeof vmeduLive.startLiveExam === 'function' && user.username !== 'DEMO123' && exam && exam.allowStartExam) {
+    if (vmeduLive && typeof vmeduLive.startLiveExam === 'function' && user.username !== 'DEMO123') {
       const up = await vmeduLive.startLiveExam(user, examId);
       if (up && up.ok) upstream_status = 'success';
     }
@@ -828,9 +830,19 @@ async function handleApi(req, res, url) {
     });
 
     let upstream_status = 'simulated';
-    if (vmeduLive && typeof vmeduLive.submitLiveExam === 'function' && user.username !== 'DEMO123' && exam && exam.allowStartExam) {
+    if (vmeduLive && typeof vmeduLive.submitLiveExam === 'function' && user.username !== 'DEMO123') {
       const up = await vmeduLive.submitLiveExam(user, examId, answers, remainingTime, submissionType);
-      if (up && up.ok) upstream_status = 'success';
+      if (up && up.ok) {
+        upstream_status = 'success';
+        if (submissionType !== 'auto-save' && typeof vmeduLive.getLiveStudentExams === 'function') {
+          try {
+            const refreshed = await vmeduLive.getLiveStudentExams(user);
+            if (refreshed && Array.isArray(refreshed.exams) && refreshed.exams.length) {
+              DB.examsByUser[username] = refreshed.exams;
+            }
+          } catch {}
+        }
+      }
     }
 
     if (submissionType === 'submit' && exam) {

@@ -295,20 +295,13 @@ async function loadExams() {
   try {
     const d = await apiPost('/api/getExams');
     const remoteExams = d.exams || [];
-    const localMap = getStoredExams();
+    const useLocalMerge = d.source !== 'live' || state.profile?.user === 'DEMO123';
+    const localMap = useLocalMerge ? getStoredExams() : {};
 
-    // Merge remote with locally stored submissions (prefer newer local submission or live portal score)
+    // Merge remote with locally stored submissions (for offline/demo mode only)
     state.exams = remoteExams.map(ex => {
       const local = localMap[String(ex.examId)];
       if (local) {
-        const remoteTime = ex.submittedAt ? Date.parse(String(ex.submittedAt).replace(' ', 'T')) || 0 : 0;
-        const localTime = local.submittedAt ? Date.parse(String(local.submittedAt).replace(' ', 'T')) || 0 : 0;
-        if (ex.completionStatus === '1' && remoteTime > localTime && ex.studentScore !== undefined) {
-          return {
-            ...ex,
-            submittedAnswers: local.answers || ex.submittedAnswers
-          };
-        }
         return {
           ...ex,
           completionStatus: '1',
@@ -1115,26 +1108,69 @@ async function openQuizModal(examId, title, subj, isReview = false) {
   }
 }
 
+let autoSaveTimer = null;
+
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  $('#autoSaveStatus').textContent = '● Saving progress...';
+  autoSaveTimer = setTimeout(async () => {
+    if (!state.currentExamId || $('#quizQuestionsContainer').classList.contains('hidden')) return;
+    try {
+      await apiPost('/api/exam/submit', {
+        exam_id: state.currentExamId,
+        answers: state.quizAnswers,
+        remainingTime: state.quizSecondsLeft,
+        submission_type: 'auto-save'
+      });
+      $('#autoSaveStatus').textContent = '● Progress auto-saved';
+    } catch {
+      $('#autoSaveStatus').textContent = '● Autosave active';
+    }
+  }, 600);
+}
+
 function renderQuizQuestions(questions) {
   state.quizAnswers = {};
   $('#quizQuestionsList').innerHTML = questions.map((q, idx) => {
+    const qType = String(q.type || 'MULTIPLE-CHOICE').toUpperCase();
     const correctId = q.correctAnswerId;
     if (correctId) {
       state.quizAnswers[q.qid] = correctId;
     }
+    const imgHtml = q.image ? `<img class="q-image" src="${esc(q.image)}" alt="Question image" />` : '';
+
+    if (qType === 'ONE-WORD') {
+      return `
+        <div class="q-item" data-qid="${esc(q.qid)}">
+          <div class="q-title">
+            <span class="q-num">Q${idx + 1}.</span>
+            <span>${esc(q.text)}</span>
+          </div>
+          ${imgHtml}
+          <div class="q-options">
+            <input type="text" class="q-oneword-input" data-qid="${esc(q.qid)}" placeholder="Type your answer..." />
+          </div>
+        </div>
+      `;
+    }
+
+    const inputType = qType === 'MULTIPLE-SELECT' ? 'checkbox' : 'radio';
     return `
     <div class="q-item" data-qid="${esc(q.qid)}">
       <div class="q-title">
         <span class="q-num">Q${idx + 1}.</span>
         <span>${esc(q.text)}</span>
       </div>
+      ${imgHtml}
       <div class="q-options">
-        ${q.answers.map(a => {
-          const isSelected = String(a.id) === String(correctId);
+        ${(q.answers || []).map(a => {
+          const isSelected = Boolean(correctId) && String(a.id) === String(correctId);
+          const aImgHtml = a.image ? `<img class="a-image" src="${esc(a.image)}" alt="Option image" />` : '';
           return `
           <label class="q-opt ${isSelected ? 'selected' : ''}" data-qid="${esc(q.qid)}" data-aid="${esc(a.id)}">
-            <input type="radio" name="q_${esc(q.qid)}" value="${esc(a.id)}" ${isSelected ? 'checked="checked"' : ''} />
+            <input type="${inputType}" name="q_${esc(q.qid)}" value="${esc(a.id)}" ${isSelected ? 'checked="checked"' : ''} />
             <span>${esc(a.text)}</span>
+            ${aImgHtml}
             ${isSelected ? '<span class="auto-selected-badge">✓ Auto-selected</span>' : ''}
           </label>
         `;}).join('')}
@@ -1142,28 +1178,42 @@ function renderQuizQuestions(questions) {
     </div>
   `;}).join('');
 
-  $$('#quizQuestionsList .q-opt input[type="radio"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      const qid = radio.closest('.q-opt').dataset.qid;
-      const aid = radio.value;
-      state.quizAnswers[qid] = aid;
+  $$('#quizQuestionsList .q-opt input').forEach(input => {
+    input.addEventListener('change', () => {
+      const qid = input.closest('.q-opt').dataset.qid;
+      const parent = input.closest('.q-options');
 
-      const parent = radio.closest('.q-options');
-      parent.querySelectorAll('.q-opt').forEach(el => {
-        const isNowSelected = el === radio.closest('.q-opt');
-        el.classList.toggle('selected', isNowSelected);
-        const badge = el.querySelector('.auto-selected-badge');
-        if (badge) badge.style.display = isNowSelected ? '' : 'none';
-      });
+      if (input.type === 'checkbox') {
+        const checkedVals = [...parent.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value);
+        state.quizAnswers[qid] = checkedVals.join(',');
+        parent.querySelectorAll('.q-opt').forEach(el => {
+          el.classList.toggle('selected', el.querySelector('input').checked);
+        });
+      } else {
+        state.quizAnswers[qid] = input.value;
+        parent.querySelectorAll('.q-opt').forEach(el => {
+          const isNowSelected = el === input.closest('.q-opt');
+          el.classList.toggle('selected', isNowSelected);
+          const badge = el.querySelector('.auto-selected-badge');
+          if (badge) badge.style.display = isNowSelected ? '' : 'none';
+        });
+      }
 
-      $('#autoSaveStatus').textContent = '● Progress saved';
+      scheduleAutoSave();
+    });
+  });
+
+  $$('#quizQuestionsList .q-oneword-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      state.quizAnswers[inp.dataset.qid] = inp.value.trim();
+      scheduleAutoSave();
     });
   });
 }
 
 function startQuizTimer() {
   clearInterval(state.quizTimer);
-  state.quizSecondsLeft = 180; // Default: 3 minutes
+  state.quizSecondsLeft = 194; // Default: 3:14 minutes
   updateTimerDisplay();
   state.quizTimer = setInterval(() => {
     state.quizSecondsLeft--;
@@ -1200,6 +1250,7 @@ $('#submitQuizBtn').addEventListener('click', submitQuiz);
 
 async function submitQuiz() {
   clearInterval(state.quizTimer);
+  clearTimeout(autoSaveTimer);
   $('#submitQuizBtn').disabled = true;
   $('#autoSaveStatus').textContent = 'Submitting...';
 
@@ -1244,13 +1295,15 @@ async function submitQuiz() {
       ex.submittedAnswers = Object.assign({}, state.quizAnswers);
       ex.submittedAt = submittedAt;
     }
-    saveExamLocally(
-      state.currentExamId,
-      res.hasAnswerKey !== false ? res.score : null,
-      res.totalMarks,
-      state.quizAnswers,
-      submittedAt
-    );
+    if (state.profile?.user === 'DEMO123') {
+      saveExamLocally(
+        state.currentExamId,
+        res.hasAnswerKey !== false ? res.score : null,
+        res.totalMarks,
+        state.quizAnswers,
+        submittedAt
+      );
+    }
     await loadExams();
     renderDashboardTasks();
     renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
