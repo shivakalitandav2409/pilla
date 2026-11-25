@@ -228,6 +228,35 @@ async function loadProfile() {
     sideAv.textContent = initial;
   }
 
+  // Student Profile Hero Card
+  const profAv = $('#profAvatar');
+  if (profAv) {
+    if (p.dp_url) {
+      profAv.style.backgroundImage = `url('${p.dp_url}')`;
+      profAv.textContent = '';
+    } else {
+      profAv.style.backgroundImage = 'none';
+      profAv.textContent = initial;
+    }
+  }
+  if ($('#profName')) $('#profName').textContent = p.name || '—';
+  if ($('#profStream')) $('#profStream').textContent = p.stream || 'B. Tech';
+  if ($('#profSem')) $('#profSem').textContent = p.semester || 'Semester III';
+  if ($('#profGroup')) {
+    $('#profGroup').textContent = p.groupName || 'Regular';
+    $('#profGroup').style.display = p.groupName ? '' : 'none';
+  }
+  if ($('#profBatch')) {
+    $('#profBatch').textContent = p.batchName || 'Batch 1';
+    $('#profBatch').style.display = p.batchName ? '' : 'none';
+  }
+  if ($('#profUser')) $('#profUser').textContent = p.prn ? `${p.user} (${p.prn})` : (p.user || '—');
+  if ($('#profStuid')) $('#profStuid').textContent = p.stuid || '—';
+  if ($('#profAcaYear')) $('#profAcaYear').textContent = p.admissionYear ? `${p.academicYear || '2026-27'} (Adm ${p.admissionYear})` : (p.academicYear || '2026-27');
+  if ($('#profDob')) $('#profDob').textContent = p.dob || '—';
+  if ($('#profEmail')) $('#profEmail').textContent = p.email || '—';
+  if ($('#profMobile')) $('#profMobile').textContent = p.mobile || '—';
+
   const hour = new Date().getHours();
   const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   $('#greeting').textContent = `${part}, ${(p.name || '').split(' ')[0]} · ${p.email}`;

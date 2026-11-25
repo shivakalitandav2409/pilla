@@ -1105,9 +1105,17 @@ export default {
           const streamName = group.streamname || 'B. Tech';
           const sid = Number(group.streamid) || 1084;
           const groupid = Number(group.gid) || 101182;
+          const groupName = group.grpname || '';
+          const semMatch = groupName.match(/-(I{1,3}V?|VI{0,3}|[1-8])(?:-|$)/i);
+          const semester = semMatch ? `Semester ${semMatch[1].toUpperCase()}` : 'Semester III';
+          const yearList = Array.isArray(live.data.AcademicYearList) ? live.data.AcademicYearList : [];
+          const acaYearObj = yearList.find(y => String(y.YearId) === String(s.Acayear));
+          const admYearObj = yearList.find(y => String(y.YearId) === String(s.admissionYear));
           const batchIds = (s.studentAssignedBatches && Array.isArray(s.studentAssignedBatches.ubid_array) && s.studentAssignedBatches.ubid_array.length)
             ? s.studentAssignedBatches.ubid_array.map(String)
             : (group.buid ? [String(group.buid)] : ['70134']);
+          const batchObj = s.studentAssignedBatches && s.studentAssignedBatches.data && s.studentAssignedBatches.data[batchIds[0]];
+          const batchName = (batchObj && batchObj.batchname) || group.batch || 'Batch 1';
           const electiveGroupIds = (s.electiveBatches && s.electiveBatches.data && typeof s.electiveBatches.data === 'object')
             ? [...new Set(Object.values(s.electiveBatches.data).map(b => b.groupid).filter(Boolean).map(String))]
             : [];
@@ -1122,7 +1130,15 @@ export default {
             email: s.EmailId || '',
             dp_url: s.UserDp || (templateUser && templateUser.dp_url) || '',
             stuid: String(s.stuid || ''),
+            prn: s.PRNno || '',
+            dob: s.DOB || '',
             streamName: streamName,
+            groupName: groupName,
+            semester: semester,
+            batchName: batchName,
+            academicYear: (acaYearObj && acaYearObj.YearText) || '2026-27',
+            admissionYear: (admYearObj && admYearObj.YearText) || '',
+            points: Number(s.Points) || 0,
             sid: sid,
             groupid: groupid,
             buid: Number(batchIds[0]) || 70134,
@@ -1246,7 +1262,25 @@ export default {
         const currentSessions = DB.sessionsByUser[username] || userSessions;
         const metrics = user._liveMetrics || computeMetrics(currentSessions);
         return jsonResponse({
-          name: user.name, user: user.username, mobile: user.mobile, email: user.email, dp_url: user.dp_url, stuid: user.stuid, stream: user.streamName, institute: INSTITUTE, mentor: user.mentor, fees: user.fees, attendance_metrics: metrics
+          name: user.name,
+          user: user.username,
+          mobile: user.mobile,
+          email: user.email,
+          dp_url: user.dp_url,
+          stuid: user.stuid,
+          prn: user.prn || '',
+          dob: user.dob || '',
+          stream: user.streamName,
+          groupName: user.groupName || '',
+          semester: user.semester || 'Semester III',
+          batchName: user.batchName || '',
+          academicYear: user.academicYear || '2026-27',
+          admissionYear: user.admissionYear || '',
+          points: user.points || 0,
+          institute: INSTITUTE,
+          mentor: user.mentor,
+          fees: user.fees,
+          attendance_metrics: metrics
         });
       }
 
