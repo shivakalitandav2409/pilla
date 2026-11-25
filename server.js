@@ -223,12 +223,13 @@ for (const [username, user] of Object.entries(DB.users)) {
 }
 
 function computeMetrics(sessions) {
-  const total = sessions.length;
-  const present = sessions.filter(s => s.attendance_status === 'Present').length;
+  const marked = sessions.filter(s => s.attendance_status === 'Present' || s.attendance_status === 'Absent');
+  const total = marked.length;
+  const present = marked.filter(s => s.attendance_status === 'Present').length;
   const absent = total - present;
 
   const bySub = {};
-  for (const x of sessions) {
+  for (const x of marked) {
     (bySub[x.subject_id] = bySub[x.subject_id] || []).push(x.attendance_status === 'Present');
   }
   const perSub = Object.values(bySub).map(arr => (arr.filter(Boolean).length / arr.length) * 100);
@@ -479,10 +480,13 @@ async function handleApi(req, res, url) {
           const liveSubjs = {};
           liveRes.items.forEach(s => {
             if (!liveSubjs[s.subject_id]) {
+              const disp = s.subject_display_name || s.subject_name;
+              const codeMatch = disp.match(/\(([^)]+)\)\s*\([^)]*\)\s*$/);
               liveSubjs[s.subject_id] = {
                 subject_id: s.subject_id,
                 subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
-                course_code: '',
+                display_name: disp,
+                course_code: codeMatch ? codeMatch[1].trim() : '',
                 subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
                 subject_choice: 'regular'
               };
@@ -563,6 +567,7 @@ async function handleApi(req, res, url) {
 
   // 7. Mark Present / Absent (Real College Upstream Modification)
   if ((route === '/api/present' || route === '/api/absent') && req.method === 'POST') {
+    await ensureLiveSessions();
     const currentSessions = DB.sessionsByUser[username] || userSessions;
     const sid = Number(body.session_id);
     const sess = currentSessions.find(x => x.session_id === sid);

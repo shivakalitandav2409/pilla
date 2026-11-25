@@ -160,7 +160,8 @@ function getFacultyAuth() {
  * Fetch live timetable sessions for a group from portal.vmedulife.com
  */
 async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
-  const fa = getFacultyAuth();
+  let fa = getFacultyAuth();
+  if (!fa) fa = await refreshFacultySession();
   if (!fa) return null;
 
   const payload = {
@@ -175,30 +176,39 @@ async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
     getCompletedTopicNames: true
   };
 
-  const formData = new URLSearchParams();
-  formData.append('getInstituteWiseGroupwiseWeeklyTimeTableWithSubjectDetails', 'true');
-  formData.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
-  formData.append('tokenInputParameter', Buffer.from(JSON.stringify(fa.tokenInputParameter)).toString('base64'));
+  const doFetch = async (auth) => {
+    const formData = new URLSearchParams();
+    formData.append('getInstituteWiseGroupwiseWeeklyTimeTableWithSubjectDetails', 'true');
+    formData.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
+    formData.append('tokenInputParameter', Buffer.from(JSON.stringify(auth.tokenInputParameter)).toString('base64'));
 
-  const res = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/managesessions/managesessions.php', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': fa.cookie,
-      'Origin': 'https://portal.vmedulife.com',
-      'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    },
-    body: formData.toString()
-  });
+    const res = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/managesessions/managesessions.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': auth.cookie,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: formData.toString()
+    });
 
-  const text = await res.text();
-  try {
-    const json = JSON.parse(text.trim());
-    return json.data || {};
-  } catch {
-    return null;
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text.trim());
+      return json && json.data ? json.data : null;
+    } catch {
+      return null;
+    }
+  };
+
+  let data = await doFetch(fa);
+  if (!data) {
+    const refreshed = await refreshFacultySession();
+    if (refreshed) data = await doFetch(refreshed);
   }
+  return data;
 }
 
 /**
@@ -277,8 +287,8 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
       subject_name: `${subjName} ( ${subjType} | Regular )`,
       subject_display_name: `${subjName}(${s.subjectCode || ''}) ( ${subjType} | Regular )`,
       faculty_name: s.ownerName || 'Faculty Staff',
-      attendance_status: status === 'Unmarked' ? 'Present' : status,
-      source_status: status === 'Unmarked' ? 'Present' : status,
+      attendance_status: status,
+      source_status: status,
       simulated_status: null,
       time_slot: `${startStr} - ${endStr}`,
       updated_at: s.startTime || new Date().toISOString()

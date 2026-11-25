@@ -215,12 +215,14 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
 .tl-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
 .tl-dot.present { background: var(--green); }
 .tl-dot.absent { background: var(--red); }
+.tl-dot.unmarked { background: var(--muted); }
 .tl-main { flex: 1; min-width: 0; }
 .tl-subj { font-weight: 600; font-size: .95rem; margin-bottom: 3px; color: #ffffff; }
 .tl-meta { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: .82rem; }
 .tl-status { font-size: .74rem; font-weight: 700; padding: 4px 11px; border-radius: 20px; }
 .tl-status.present { background: var(--green-soft); color: var(--green); }
 .tl-status.absent { background: var(--red-soft); color: var(--red); }
+.tl-status.unmarked { background: var(--surface2); color: var(--muted); }
 .tl-sim { font-size: .72rem; color: var(--amber); font-weight: 600; }
 
 /* toggle switch */

@@ -80,6 +80,8 @@ const iso = (d) => d.toISOString().slice(0, 10);
 function splitName(display) {
   const m = String(display || '').match(/^(.*?)\(([^)]*\([^)]*\)[^)]*|[^)]*)\)\s*\(([^)]*)\)\s*$/);
   if (m) return { name: m[1].trim(), code: m[2].trim(), meta: m[3].replace(/\s*\|\s*/g, ' · ').trim() };
+  const m2 = String(display || '').match(/^(.*?)\(([^)]*)\)\s*$/);
+  if (m2) return { name: m2[1].trim(), code: '', meta: m2[2].replace(/\s*\|\s*/g, ' · ').trim() };
   return { name: display || 'Unknown Subject', code: '', meta: '' };
 }
 
@@ -458,8 +460,9 @@ function renderKpis(m) {
 function subjectStats() {
   const map = new Map();
   for (const s of state.allSessions) {
+    if (s.attendance_status !== 'Present' && s.attendance_status !== 'Absent') continue;
     if (!map.has(s.subject_id)) {
-      map.set(s.subject_id, { present: 0, total: 0, name: s.subject_name });
+      map.set(s.subject_id, { present: 0, total: 0, name: s.subject_display_name || s.subject_name });
     }
     const e = map.get(s.subject_id);
     e.total++;
@@ -561,18 +564,21 @@ function renderTimeline(container, items) {
 }
 
 function tlItem(it, withSwitch) {
+  const isUnmarked = it.attendance_status === 'Unmarked';
   const present = it.attendance_status === 'Present';
-  const { name, meta } = splitName(it.subject_name);
+  const absent = it.attendance_status === 'Absent';
+  const dotCls = isUnmarked ? 'unmarked' : (present ? 'present' : 'absent');
+  const { name, meta } = splitName(it.subject_display_name || it.subject_name);
   const sim = it.simulated_status ? `<span class="tl-sim">● modified (was ${esc(it.source_status)})</span>` : '';
   const sw = withSwitch ? `
     <div class="switch" data-id="${it.session_id}" data-idx="${it.session_index}">
       <button class="p ${present ? 'on' : ''}" data-act="present">Present</button>
-      <button class="a ${!present ? 'on' : ''}" data-act="absent">Absent</button>
-    </div>` : `<span class="tl-status ${present ? 'present' : 'absent'}">${it.attendance_status}</span>`;
+      <button class="a ${absent ? 'on' : ''}" data-act="absent">Absent</button>
+    </div>` : `<span class="tl-status ${dotCls}">${esc(it.attendance_status)}</span>`;
 
   return `
     <div class="tl-item" data-id="${it.session_id}">
-      <span class="tl-dot ${present ? 'present' : 'absent'}"></span>
+      <span class="tl-dot ${dotCls}"></span>
       <div class="tl-main">
         <div class="tl-subj">${esc(name)}</div>
         <div class="tl-meta">
@@ -622,6 +628,7 @@ async function mark(act, id, idx, sw) {
     renderGauge(state.metrics);
     renderKpis(state.metrics);
     renderSubjectBars();
+    renderRecent();
     toast(`Marked ${r.new_status} · ${splitName(r.subject_name).name}`);
   } catch (err) {
     $$('button', sw).forEach(b => (b.disabled = false));
@@ -1397,6 +1404,7 @@ function switchView(name) {
   $('#pageTitle').textContent = TITLES[name] || name;
   closeSidebar();
 
+  if (name === 'dashboard') renderDashboard();
   if (name === 'sessions') loadSessions();
   if (name === 'subjects') renderSubjectsView();
   if (name === 'assignments') renderAssignments('all');

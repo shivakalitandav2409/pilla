@@ -198,12 +198,13 @@ for (const [username, user] of Object.entries(DB.users)) {
 }
 
 function computeMetrics(sessions) {
-  const total = sessions.length;
-  const present = sessions.filter(s => s.attendance_status === 'Present').length;
+  const marked = sessions.filter(s => s.attendance_status === 'Present' || s.attendance_status === 'Absent');
+  const total = marked.length;
+  const present = marked.filter(s => s.attendance_status === 'Present').length;
   const absent = total - present;
 
   const bySub = {};
-  for (const x of sessions) {
+  for (const x of marked) {
     (bySub[x.subject_id] = bySub[x.subject_id] || []).push(x.attendance_status === 'Present');
   }
   const perSub = Object.values(bySub).map(arr => (arr.filter(Boolean).length / arr.length) * 100);
@@ -341,7 +342,8 @@ function getFacultyAuth() {
 }
 
 async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
-  const fa = getFacultyAuth();
+  let fa = getFacultyAuth();
+  if (!fa) fa = await refreshFacultyAuth();
   if (!fa) return null;
 
   const payload = {
@@ -356,29 +358,38 @@ async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
     getCompletedTopicNames: true
   };
 
-  const formData = new URLSearchParams();
-  formData.append('getInstituteWiseGroupwiseWeeklyTimeTableWithSubjectDetails', 'true');
-  formData.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
-  formData.append('tokenInputParameter', Buffer.from(JSON.stringify(fa.tokenInputParameter)).toString('base64'));
+  const doFetch = async (auth) => {
+    const formData = new URLSearchParams();
+    formData.append('getInstituteWiseGroupwiseWeeklyTimeTableWithSubjectDetails', 'true');
+    formData.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
+    formData.append('tokenInputParameter', Buffer.from(JSON.stringify(auth.tokenInputParameter)).toString('base64'));
 
-  const res = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/managesessions/managesessions.php', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Cookie': fa.cookie,
-      'Origin': 'https://portal.vmedulife.com',
-      'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    },
-    body: formData.toString()
-  });
+    const res = await fetch('https://portal.vmedulife.com/api/academicPlanning/V1/managesessions/managesessions.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': auth.cookie,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/moduleversions/academicplanning/V1/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: formData.toString()
+    });
 
-  try {
-    const json = await res.json();
-    return json.data || {};
-  } catch {
-    return null;
+    try {
+      const json = await res.json();
+      return json && json.data ? json.data : null;
+    } catch {
+      return null;
+    }
+  };
+
+  let data = await doFetch(fa);
+  if (!data) {
+    const refreshed = await refreshFacultyAuth();
+    if (refreshed) data = await doFetch(refreshed);
   }
+  return data;
 }
 
 async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, startDate, endDate) {
@@ -452,8 +463,8 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
       subject_name: `${subjName} ( ${subjType} | Regular )`,
       subject_display_name: `${subjName}(${s.subjectCode || ''}) ( ${subjType} | Regular )`,
       faculty_name: s.ownerName || 'Faculty Staff',
-      attendance_status: status === 'Unmarked' ? 'Present' : status,
-      source_status: status === 'Unmarked' ? 'Present' : status,
+      attendance_status: status,
+      source_status: status,
       simulated_status: null,
       time_slot: `${startStr} - ${endStr}`,
       updated_at: s.startTime || new Date().toISOString()
@@ -1030,10 +1041,13 @@ export default {
               const liveSubjs = {};
               liveRes.items.forEach(s => {
                 if (!liveSubjs[s.subject_id]) {
+                  const disp = s.subject_display_name || s.subject_name;
+                  const codeMatch = disp.match(/\(([^)]+)\)\s*\([^)]*\)\s*$/);
                   liveSubjs[s.subject_id] = {
                     subject_id: s.subject_id,
                     subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
-                    course_code: '',
+                    display_name: disp,
+                    course_code: codeMatch ? codeMatch[1].trim() : '',
                     subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
                     subject_choice: 'regular'
                   };
@@ -1084,6 +1098,7 @@ export default {
       }
 
       if ((route === '/api/present' || route === '/api/absent') && request.method === 'POST') {
+        await ensureLiveSessions();
         const currentSessions = DB.sessionsByUser[username] || userSessions;
         const sid = Number(body.session_id);
         const sess = currentSessions.find(x => x.session_id === sid);
