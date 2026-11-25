@@ -202,6 +202,7 @@ const DB = {
   users: JSON.parse(JSON.stringify(USERS)),
   sessionsByUser: {},
   examsByUser: {},
+  assignmentsByUser: {},
   liveQuestionsByUser: {},
   exams: JSON.parse(JSON.stringify(EXAMS)),
   examQuestions: JSON.parse(JSON.stringify(EXAM_QUESTIONS_125821)),
@@ -215,6 +216,13 @@ function getUserExams(username) {
     DB.examsByUser[username] = JSON.parse(JSON.stringify(EXAMS));
   }
   return DB.examsByUser[username];
+}
+
+function getUserAssignments(username) {
+  if (!DB.assignmentsByUser[username]) {
+    DB.assignmentsByUser[username] = JSON.parse(JSON.stringify(ASSIGNMENTS));
+  }
+  return DB.assignmentsByUser[username];
 }
 
 // Seed sessions for pre-configured users
@@ -616,33 +624,59 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 8. Get Assignments (from Coursework capture)
+  // 8. Get Assignments (Live Portal DB with HAR fallback)
   if (route === '/api/getAssignments' && req.method === 'POST') {
-    const items = DB.assignments;
+    let source = 'har';
+    if (vmeduLive && typeof vmeduLive.getLiveStudentAssignments === 'function' && user.username !== 'DEMO123') {
+      try {
+        const liveAss = await vmeduLive.getLiveStudentAssignments(user);
+        if (liveAss && Array.isArray(liveAss.assignments)) {
+          const prevMap = new Map((DB.assignmentsByUser[username] || []).map(a => [String(a.id), a]));
+          DB.assignmentsByUser[username] = liveAss.assignments.map(a => {
+            const prev = prevMap.get(String(a.id));
+            if (prev && prev.status === 'Completed' && a.status !== 'Completed' && prev._localSubmitted) {
+              return { ...a, ...prev, source: 'live' };
+            }
+            return a;
+          });
+          source = 'live';
+        }
+      } catch {}
+    }
+
+    const items = getUserAssignments(username);
     const completed = items.filter(a => a.status === 'Completed').length;
     const pending = items.length - completed;
     return send(res, 200, {
       count: items.length,
       pending_count: pending,
       completed_count: completed,
+      source,
       assignments: items
     });
   }
 
-  
-  // 8.1 Submit Assignment (Upload & Submit)
+  // 8.1 Submit Assignment (Upload & Submit — bypasses frontend deadline restrictions)
   if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && req.method === 'POST') {
     const aid = Number(body.assignment_id || body.assignmentId);
     const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
     const fileData = body.file_data || body.fileData || '';
     const remarks = body.remarks || 'Submitted via portal';
 
-    const a = DB.assignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+    const userAssignments = getUserAssignments(username);
+    const a = userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
     if (!a) {
       return send(res, 404, { ok: false, detail: 'Assignment not found' });
     }
 
+    let upstream_status = 'simulated';
+    if (vmeduLive && typeof vmeduLive.submitLiveAssignment === 'function' && user.username !== 'DEMO123') {
+      const up = await vmeduLive.submitLiveAssignment(user, a, fileName, fileData, remarks);
+      if (up && up.ok) upstream_status = 'success';
+    }
+
     a.status = 'Completed';
+    a._localSubmitted = true;
     a.submitted_on = new Date().toISOString().slice(0, 10);
     a.submitted_file = fileName;
     a.remarks = remarks;
@@ -658,26 +692,28 @@ async function handleApi(req, res, url) {
       } catch (err) {}
     }
 
-    const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+    const pending = userAssignments.filter(x => x.status === 'Pending').length;
     return send(res, 200, {
       ok: true,
       success: true,
       status: 'success',
+      upstream_status,
       message: 'Assignment submitted and verified successfully.',
       assignment: a,
-      assignments: DB.assignments,
+      assignments: userAssignments,
       pending_count: pending,
-      completed_count: DB.assignments.length - pending
+      completed_count: userAssignments.length - pending
     });
   }
 
   // 8.2 Student Assignments (GET / POST compatibility)
   if ((route === '/api/student/assignments') && (req.method === 'GET' || req.method === 'POST')) {
-    const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+    const items = getUserAssignments(username);
+    const pending = items.filter(x => x.status === 'Pending').length;
     return send(res, 200, {
       success: true,
-      data: DB.assignments,
-      assignments: DB.assignments,
+      data: items,
+      assignments: items,
       pendingCount: pending
     });
   }

@@ -178,6 +178,7 @@ const DB = {
   users: JSON.parse(JSON.stringify(USERS)),
   sessionsByUser: {},
   examsByUser: {},
+  assignmentsByUser: {},
   liveQuestionsByUser: {},
   exams: JSON.parse(JSON.stringify(EXAMS)),
   examQuestions: JSON.parse(JSON.stringify(EXAM_QUESTIONS_125821)),
@@ -191,6 +192,13 @@ function getUserExams(username) {
     DB.examsByUser[username] = JSON.parse(JSON.stringify(EXAMS));
   }
   return DB.examsByUser[username];
+}
+
+function getUserAssignments(username) {
+  if (!DB.assignmentsByUser[username]) {
+    DB.assignmentsByUser[username] = JSON.parse(JSON.stringify(ASSIGNMENTS));
+  }
+  return DB.assignmentsByUser[username];
 }
 
 for (const [username, user] of Object.entries(DB.users)) {
@@ -848,6 +856,178 @@ async function startLiveExam(user, examId) {
   }
 }
 
+/* ---------------- Live Coursework Assignment Engine (portal.vmedulife.com) ---------------- */
+async function postAssignmentsApi(user, apiName, apiInput) {
+  let token = await getLearnerAuthToken(user);
+  if (!token) return null;
+
+  const payload = Object.assign({}, apiInput, {
+    InputUserId: Number(user.stuid),
+    InputUserRole: 'learner',
+    deviceId: user.deviceId || '7880492072756295',
+    apiName,
+    moduleName: 'assignment'
+  });
+  const tokenParam = Buffer.from(JSON.stringify({
+    source: 'web',
+    uid: Number(user.stuid),
+    role: 'learner'
+  })).toString('base64');
+
+  const sendReq = async (authTok) => {
+    const params = new URLSearchParams();
+    params.append(apiName, 'true');
+    params.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
+    params.append('tokenInputParameter', tokenParam);
+    const res = await fetch('https://portal.vmedulife.com/api/learner/assignments.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + authTok,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/Assignments/AssignmentList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const text = await res.text();
+    return JSON.parse(text.trim());
+  };
+
+  let json = await sendReq(token);
+  if (json && (json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false)) {
+    token = await getLearnerAuthToken(user, true);
+    if (token) json = await sendReq(token);
+  }
+  return json;
+}
+
+function mapPortalAssignment(item) {
+  const perf = item.performanceData;
+  const hasPerf = Boolean(perf && perf !== '' && (!(Array.isArray(perf)) || perf.length > 0));
+  const needsChange = item.evaluation === 'requestChange';
+  const isCompleted = hasPerf && !needsChange;
+  const subFile = item.learner_attachment_path
+    ? String(item.learner_attachment_path).split('/').pop()
+    : (typeof perf === 'string' && perf.includes('.') ? perf.split('/').pop() : null);
+  const instFile = item.subAssignmentAttachmentName ||
+    (item.instructor_attachment_path ? String(item.instructor_attachment_path).split('/').pop() : null);
+
+  return {
+    id: Number(item.parentAssignmentId || item.id || item.subAssignmentId || 0),
+    subId: String(item.subAssignmentId || ''),
+    title: item.parentAssignmentName || item.subAssignmentTitle || 'Coursework Assignment',
+    subAssignmentTitle: item.subAssignmentTitle || item.parentAssignmentName || '',
+    subject_id: Number(item.subjectid || 0),
+    subject_name: item.subjectName || 'Subject',
+    subject_type: item.subjectType || 'Theory',
+    due_date: item.endDate || '',
+    startDate: item.startDate || '',
+    displayStartDate: item.displayStartDate || item.startDate || '',
+    displayEndDate: item.displayEndDate || item.endDate || '',
+    displayDateMsg: item.displayDateMsg || '',
+    toDisplayAssignment: item.toDisplayAssignment !== undefined ? Boolean(item.toDisplayAssignment) : true,
+    pattern: item.subAssignmentPattern || 'upload',
+    status: isCompleted ? 'Completed' : 'Pending',
+    marks: Number(item.marks) || 10,
+    obtainedMarks: item.obtainedMarks !== undefined && item.obtainedMarks !== '' && item.obtainedMarks !== null
+      ? Number(item.obtainedMarks)
+      : null,
+    evaluation: item.evaluation || '',
+    instructor_review: item.instructor_review || '',
+    submitted_on: isCompleted ? (item.submissionDate || item.endDate || '') : null,
+    submitted_file: isCompleted ? (subFile || 'Submitted_Assignment.pdf') : null,
+    learner_attachment_path: item.learner_attachment_path || '',
+    instructorAttachment: instFile || '',
+    instructor_attachment_path: item.instructor_attachment_path || '',
+    facultyName: item.facultyName || '',
+    batchName: item.batchName || '',
+    instruction: item.subAssignmentInstruction || '',
+    source: 'live'
+  };
+}
+
+async function getLiveStudentAssignments(user) {
+  if (!user || !user.stuid || !user.sid || !user.groupid || user.username === 'DEMO123') return null;
+  try {
+    const batchStr = Array.isArray(user.batchIds) && user.batchIds.length
+      ? user.batchIds.map(String).join(',')
+      : String(user.buid || '70134');
+
+    const [facRes, examRes] = await Promise.all([
+      postAssignmentsApi(user, 'getAssignmentAssignedToStudentForWeb', {
+        sidString: String(user.sid),
+        acayr: String(user.acayr || '12'),
+        gidString: String(user.groupid),
+        stuId: Number(user.stuid),
+        batchIdStr: batchStr
+      }).catch(() => null),
+      postAssignmentsApi(user, 'getAssignmentsBasedOnExam', {
+        sidString: String(user.sid),
+        acayr: String(user.acayr || '12'),
+        gidString: String(user.groupid),
+        stuId: Number(user.stuid)
+      }).catch(() => null)
+    ]);
+
+    const rawItems = [];
+    if (facRes && (facRes.success === true || facRes.success === 'true') && facRes.data) {
+      const arr = Array.isArray(facRes.data) ? facRes.data : Object.values(facRes.data);
+      rawItems.push(...arr);
+    }
+    if (examRes && (examRes.success === true || examRes.success === 'true') && examRes.data) {
+      const arr = Array.isArray(examRes.data) ? examRes.data : Object.values(examRes.data);
+      rawItems.push(...arr);
+    }
+    if (!rawItems.length && !(facRes && (facRes.success === true || facRes.success === 'true'))) {
+      return null;
+    }
+    return { assignments: rawItems.map(mapPortalAssignment) };
+  } catch {
+    return null;
+  }
+}
+
+async function submitLiveAssignment(user, assignment, fileName, fileData, remarks = '') {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const token = await getLearnerAuthToken(user);
+    if (!token) return { ok: false, upstream_status: 'simulated' };
+
+    const base64Data = fileData && String(fileData).includes('base64,')
+      ? String(fileData).split('base64,')[1]
+      : String(fileData || '');
+    const fileBuf = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from(remarks || 'Assignment submission');
+
+    const form = new FormData();
+    form.append('onlineExam_addStudentAssignment', 'true');
+    form.append('subjectId', String(assignment.subject_id || ''));
+    form.append('uniqueId', String(assignment.id || ''));
+    form.append('parentAssignmentId', String(assignment.id || ''));
+    form.append('subAssignmentId', String(assignment.subId || ''));
+    form.append('studentId', String(user.stuid));
+    form.append('remarks', String(remarks || 'Submitted via student portal'));
+    form.append('file', new Blob([fileBuf]), fileName || 'assignment.pdf');
+
+    const res = await fetch('https://portal.vmedulife.com/api/onlineExam/addStudentAssignment.php', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + token,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/Assignments/AssignmentList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: form
+    });
+    const text = await res.text();
+    const json = JSON.parse(text.trim());
+    const ok = Boolean(json && (json.success === true || json.success === 'true' || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
 async function submitLiveExam(user, examId, answers, remainingTime = 194, submissionType = 'submit') {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
@@ -868,6 +1048,178 @@ async function submitLiveExam(user, examId, answers, remainingTime = 194, submis
       submissionType: subType
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
+  }
+}
+
+/* ---------------- Live Coursework Assignment Engine (portal.vmedulife.com) ---------------- */
+async function postAssignmentsApi(user, apiName, apiInput) {
+  let token = await getLearnerAuthToken(user);
+  if (!token) return null;
+
+  const payload = Object.assign({}, apiInput, {
+    InputUserId: Number(user.stuid),
+    InputUserRole: 'learner',
+    deviceId: user.deviceId || '7880492072756295',
+    apiName,
+    moduleName: 'assignment'
+  });
+  const tokenParam = Buffer.from(JSON.stringify({
+    source: 'web',
+    uid: Number(user.stuid),
+    role: 'learner'
+  })).toString('base64');
+
+  const sendReq = async (authTok) => {
+    const params = new URLSearchParams();
+    params.append(apiName, 'true');
+    params.append('data', Buffer.from(JSON.stringify(payload)).toString('base64'));
+    params.append('tokenInputParameter', tokenParam);
+    const res = await fetch('https://portal.vmedulife.com/api/learner/assignments.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + authTok,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/Assignments/AssignmentList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: params.toString()
+    });
+    const text = await res.text();
+    return JSON.parse(text.trim());
+  };
+
+  let json = await sendReq(token);
+  if (json && (json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false)) {
+    token = await getLearnerAuthToken(user, true);
+    if (token) json = await sendReq(token);
+  }
+  return json;
+}
+
+function mapPortalAssignment(item) {
+  const perf = item.performanceData;
+  const hasPerf = Boolean(perf && perf !== '' && (!(Array.isArray(perf)) || perf.length > 0));
+  const needsChange = item.evaluation === 'requestChange';
+  const isCompleted = hasPerf && !needsChange;
+  const subFile = item.learner_attachment_path
+    ? String(item.learner_attachment_path).split('/').pop()
+    : (typeof perf === 'string' && perf.includes('.') ? perf.split('/').pop() : null);
+  const instFile = item.subAssignmentAttachmentName ||
+    (item.instructor_attachment_path ? String(item.instructor_attachment_path).split('/').pop() : null);
+
+  return {
+    id: Number(item.parentAssignmentId || item.id || item.subAssignmentId || 0),
+    subId: String(item.subAssignmentId || ''),
+    title: item.parentAssignmentName || item.subAssignmentTitle || 'Coursework Assignment',
+    subAssignmentTitle: item.subAssignmentTitle || item.parentAssignmentName || '',
+    subject_id: Number(item.subjectid || 0),
+    subject_name: item.subjectName || 'Subject',
+    subject_type: item.subjectType || 'Theory',
+    due_date: item.endDate || '',
+    startDate: item.startDate || '',
+    displayStartDate: item.displayStartDate || item.startDate || '',
+    displayEndDate: item.displayEndDate || item.endDate || '',
+    displayDateMsg: item.displayDateMsg || '',
+    toDisplayAssignment: item.toDisplayAssignment !== undefined ? Boolean(item.toDisplayAssignment) : true,
+    pattern: item.subAssignmentPattern || 'upload',
+    status: isCompleted ? 'Completed' : 'Pending',
+    marks: Number(item.marks) || 10,
+    obtainedMarks: item.obtainedMarks !== undefined && item.obtainedMarks !== '' && item.obtainedMarks !== null
+      ? Number(item.obtainedMarks)
+      : null,
+    evaluation: item.evaluation || '',
+    instructor_review: item.instructor_review || '',
+    submitted_on: isCompleted ? (item.submissionDate || item.endDate || '') : null,
+    submitted_file: isCompleted ? (subFile || 'Submitted_Assignment.pdf') : null,
+    learner_attachment_path: item.learner_attachment_path || '',
+    instructorAttachment: instFile || '',
+    instructor_attachment_path: item.instructor_attachment_path || '',
+    facultyName: item.facultyName || '',
+    batchName: item.batchName || '',
+    instruction: item.subAssignmentInstruction || '',
+    source: 'live'
+  };
+}
+
+async function getLiveStudentAssignments(user) {
+  if (!user || !user.stuid || !user.sid || !user.groupid || user.username === 'DEMO123') return null;
+  try {
+    const batchStr = Array.isArray(user.batchIds) && user.batchIds.length
+      ? user.batchIds.map(String).join(',')
+      : String(user.buid || '70134');
+
+    const [facRes, examRes] = await Promise.all([
+      postAssignmentsApi(user, 'getAssignmentAssignedToStudentForWeb', {
+        sidString: String(user.sid),
+        acayr: String(user.acayr || '12'),
+        gidString: String(user.groupid),
+        stuId: Number(user.stuid),
+        batchIdStr: batchStr
+      }).catch(() => null),
+      postAssignmentsApi(user, 'getAssignmentsBasedOnExam', {
+        sidString: String(user.sid),
+        acayr: String(user.acayr || '12'),
+        gidString: String(user.groupid),
+        stuId: Number(user.stuid)
+      }).catch(() => null)
+    ]);
+
+    const rawItems = [];
+    if (facRes && (facRes.success === true || facRes.success === 'true') && facRes.data) {
+      const arr = Array.isArray(facRes.data) ? facRes.data : Object.values(facRes.data);
+      rawItems.push(...arr);
+    }
+    if (examRes && (examRes.success === true || examRes.success === 'true') && examRes.data) {
+      const arr = Array.isArray(examRes.data) ? examRes.data : Object.values(examRes.data);
+      rawItems.push(...arr);
+    }
+    if (!rawItems.length && !(facRes && (facRes.success === true || facRes.success === 'true'))) {
+      return null;
+    }
+    return { assignments: rawItems.map(mapPortalAssignment) };
+  } catch {
+    return null;
+  }
+}
+
+async function submitLiveAssignment(user, assignment, fileName, fileData, remarks = '') {
+  if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
+  try {
+    const token = await getLearnerAuthToken(user);
+    if (!token) return { ok: false, upstream_status: 'simulated' };
+
+    const base64Data = fileData && String(fileData).includes('base64,')
+      ? String(fileData).split('base64,')[1]
+      : String(fileData || '');
+    const fileBuf = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from(remarks || 'Assignment submission');
+
+    const form = new FormData();
+    form.append('onlineExam_addStudentAssignment', 'true');
+    form.append('subjectId', String(assignment.subject_id || ''));
+    form.append('uniqueId', String(assignment.id || ''));
+    form.append('parentAssignmentId', String(assignment.id || ''));
+    form.append('subAssignmentId', String(assignment.subId || ''));
+    form.append('studentId', String(user.stuid));
+    form.append('remarks', String(remarks || 'Submitted via student portal'));
+    form.append('file', new Blob([fileBuf]), fileName || 'assignment.pdf');
+
+    const res = await fetch('https://portal.vmedulife.com/api/onlineExam/addStudentAssignment.php', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + token,
+        'Origin': 'https://portal.vmedulife.com',
+        'Referer': 'https://portal.vmedulife.com/student/Assignments/AssignmentList.php',
+        'User-Agent': 'Mozilla/5.0'
+      },
+      body: form
+    });
+    const text = await res.text();
+    const json = JSON.parse(text.trim());
+    const ok = Boolean(json && (json.success === true || json.success === 'true' || json.status === 'success'));
     return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
   } catch {
     return { ok: false, upstream_status: 'simulated' };
@@ -1137,9 +1489,33 @@ export default {
         });
       }
 
-            if (route === '/api/getAssignments' && request.method === 'POST') {
-        const items = DB.assignments;
-        return jsonResponse({ count: items.length, pending_count: items.filter(a => a.status === 'Pending').length, completed_count: items.filter(a => a.status === 'Completed').length, assignments: items });
+      if (route === '/api/getAssignments' && request.method === 'POST') {
+        let source = 'har';
+        if (user.username !== 'DEMO123') {
+          try {
+            const liveAss = await getLiveStudentAssignments(user);
+            if (liveAss && Array.isArray(liveAss.assignments)) {
+              const prevMap = new Map((DB.assignmentsByUser[username] || []).map(a => [String(a.id), a]));
+              DB.assignmentsByUser[username] = liveAss.assignments.map(a => {
+                const prev = prevMap.get(String(a.id));
+                if (prev && prev.status === 'Completed' && a.status !== 'Completed' && prev._localSubmitted) {
+                  return { ...a, ...prev, source: 'live' };
+                }
+                return a;
+              });
+              source = 'live';
+            }
+          } catch {}
+        }
+
+        const items = getUserAssignments(username);
+        return jsonResponse({
+          count: items.length,
+          pending_count: items.filter(a => a.status === 'Pending').length,
+          completed_count: items.filter(a => a.status === 'Completed').length,
+          source,
+          assignments: items
+        });
       }
 
       if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && request.method === 'POST') {
@@ -1148,35 +1524,45 @@ export default {
         const fileData = body.file_data || body.fileData || '';
         const remarks = body.remarks || 'Submitted via portal';
 
-        const a = DB.assignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+        const userAssignments = getUserAssignments(username);
+        const a = userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
         if (!a) {
           return jsonResponse({ ok: false, detail: 'Assignment not found' }, 404);
         }
 
+        let upstream_status = 'simulated';
+        if (user.username !== 'DEMO123') {
+          const up = await submitLiveAssignment(user, a, fileName, fileData, remarks);
+          if (up && up.ok) upstream_status = 'success';
+        }
+
         a.status = 'Completed';
+        a._localSubmitted = true;
         a.submitted_on = new Date().toISOString().slice(0, 10);
         a.submitted_file = fileName;
         a.remarks = remarks;
 
-        const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+        const pending = userAssignments.filter(x => x.status === 'Pending').length;
         return jsonResponse({
           ok: true,
           success: true,
           status: 'success',
+          upstream_status,
           message: 'Assignment submitted and verified successfully.',
           assignment: a,
-          assignments: DB.assignments,
+          assignments: userAssignments,
           pending_count: pending,
-          completed_count: DB.assignments.length - pending
+          completed_count: userAssignments.length - pending
         });
       }
 
       if ((route === '/api/student/assignments') && (request.method === 'GET' || request.method === 'POST')) {
-        const pending = DB.assignments.filter(x => x.status === 'Pending').length;
+        const items = getUserAssignments(username);
+        const pending = items.filter(x => x.status === 'Pending').length;
         return jsonResponse({
           success: true,
-          data: DB.assignments,
-          assignments: DB.assignments,
+          data: items,
+          assignments: items,
           pendingCount: pending
         });
       }

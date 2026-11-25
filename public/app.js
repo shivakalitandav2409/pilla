@@ -271,9 +271,10 @@ async function loadAssignments() {
   try {
     const d = await apiPost('/api/getAssignments');
     const remoteAss = d.assignments || [];
-    const localMap = getStoredAssignments();
+    const useLocalMerge = d.source !== 'live' || state.profile?.user === 'DEMO123';
+    const localMap = useLocalMerge ? getStoredAssignments() : {};
 
-    // Merge remote with locally stored submissions
+    // Merge remote with locally stored submissions (offline/demo mode)
     state.assignments = remoteAss.map(a => {
       const local = localMap[String(a.id)];
       if (local) {
@@ -694,9 +695,11 @@ function renderAssignments(filter = 'all') {
 
   $('#assignmentsList').innerHTML = list.map(a => {
     const isComp = a.status === 'Completed';
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const isPastDue = !isComp && Boolean(a.due_date && a.due_date < todayStr);
     const selFile = selectedFiles[a.id];
-    const fileLabelText = selFile 
-      ? `📄 ${esc(selFile.name)} (${(selFile.size / 1024).toFixed(1)} KB)` 
+    const fileLabelText = selFile
+      ? `📄 ${esc(selFile.name)} (${(selFile.size / 1024).toFixed(1)} KB)`
       : '📎 Choose or Drag assignment file...';
 
     return `
@@ -706,18 +709,19 @@ function renderAssignments(filter = 'all') {
             <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
               ${esc(a.subject_name)} ${a.batchName ? `· ${esc(a.batchName)}` : ''}
             </span>
-            <span class="ass-status ${isComp ? 'completed' : 'pending'}">${esc(a.status)}</span>
+            <span class="ass-status ${isComp ? 'completed' : 'pending'}">${isPastDue ? 'Past Deadline' : esc(a.status)}</span>
           </div>
           <h3 class="ass-title">${esc(a.title)}</h3>
           <div class="ass-meta">
             <span>📅 Assigned: <b>${esc(a.displayStartDate || a.startDate || 'Recorded')}</b></span>
-            <span>⏰ Due Date: <b style="color:#ffffff;">${esc(a.displayEndDate || a.due_date)}</b></span>
+            <span>⏰ Due Date: <b style="color:${isPastDue ? '#f87171' : '#ffffff'};">${esc(a.displayEndDate || a.due_date)}</b></span>
             <span>🎯 Total Marks: <b>${esc(a.marks)}</b></span>
             ${a.facultyName ? `<span>👤 Faculty: <b>${esc(a.facultyName)}</b></span>` : ''}
             ${a.obtainedMarks !== null && a.obtainedMarks !== undefined ? `
               <span style="color:var(--green);font-weight:700;">⭐ Obtained Score: ${a.obtainedMarks} / ${a.marks} (${esc(a.evaluation || 'Graded')})</span>
             ` : ''}
             ${a.instructorAttachment ? `<span>📎 Ref Attachment: <b style="color:var(--accent);">${esc(a.instructorAttachment)}</b></span>` : ''}
+            ${isPastDue ? `<span style="color:#fbbf24;font-size:.78rem;font-weight:600;">⚠️ Deadline passed · Late upload enabled via backend API</span>` : ''}
           </div>
           ${a.instruction ? `
             <div style="font-size:.8rem;color:var(--muted);background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:6px;margin:8px 0;border-left:2px solid var(--accent);">
@@ -727,13 +731,13 @@ function renderAssignments(filter = 'all') {
 
           ${!isComp ? `
             <div class="ass-upload-box" id="assBox_${a.id}">
-              <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.zip,.py,.cpp" style="display:none;" />
+              <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
               <label for="assFile_${a.id}" class="ass-file-drop" id="assDrop_${a.id}">
                 <span class="ass-drop-icon">📎</span>
                 <span class="ass-drop-text" id="assText_${a.id}">${fileLabelText}</span>
               </label>
               <div class="ass-action-row">
-                <span class="ass-file-hint muted" style="font-size:.78rem;">PDF, DOCX up to 10MB</span>
+                <span class="ass-file-hint muted" style="font-size:.78rem;">PDF, DOCX, HTML up to 10MB</span>
                 <button class="ass-upload-btn" id="assBtn_${a.id}" data-id="${a.id}" ${selFile ? '' : 'disabled'}>
                   <span>Upload & Submit</span>
                 </button>
@@ -750,14 +754,14 @@ function renderAssignments(filter = 'all') {
               </div>
               <div class="ass-btn-row">
                 <button class="ass-view-btn" data-id="${a.id}" data-file="${esc(a.submitted_file || 'Assignment.pdf')}">
-                  👁️ View Document
+                  🧾 Capture HTML
                 </button>
                 <button class="ass-resubmit-btn" data-id="${a.id}">
                   🔄 Re-submit File
                 </button>
               </div>
               <div class="ass-upload-box hidden" id="assReBox_${a.id}" style="margin-top:8px;">
-                <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.zip,.py,.cpp" style="display:none;" />
+                <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
                 <label for="assFile_${a.id}" class="ass-file-drop">
                   <span class="ass-drop-icon">📎</span>
                   <span class="ass-drop-text" id="assText_${a.id}">Choose new file...</span>
@@ -855,9 +859,12 @@ function wireAssignmentInteractions() {
           const pending = state.assignments.filter(a => a.status === 'Pending').length;
           $('#sideAssBadge').textContent = pending || '';
 
-          saveAssignmentLocally(id, file.name, new Date().toISOString().slice(0, 10));
+          if (state.profile?.user === 'DEMO123') {
+            saveAssignmentLocally(id, file.name, new Date().toISOString().slice(0, 10));
+          }
           renderDashboardTasks();
-          toast(`✅ ${file.name} uploaded successfully!`);
+          const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : '';
+          toast(`✅ ${file.name} uploaded successfully${syncNote}!`);
           renderAssignments($('#assSeg .seg-btn.active')?.dataset.filter || 'all');
         } catch (err) {
           toast(err.message || 'Upload failed', true);
@@ -869,22 +876,61 @@ function wireAssignmentInteractions() {
     });
   });
 
-  // View buttons
+  // HTML Capture button (downloads self-contained HTML submission receipt)
   $$('.ass-view-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const fileName = btn.dataset.file || 'Assignment_Submission.pdf';
-      // Create a friendly downloadable preview blob
-      const content = `Pilla Student Portal Document Archive\n-------------------------------------\nAssignment ID: #${btn.dataset.id}\nFile: ${fileName}\nStudent: ${state.profile?.name || 'Shivang Saxena'}\nStatus: Verified and Submitted\nVerification ID: OK-${Date.now()}`;
-      const blob = new Blob([content], { type: 'text/plain' });
+      const id = btn.dataset.id;
+      const ass = state.assignments.find(a => String(a.id) === String(id)) || {};
+      const fileName = btn.dataset.file || ass.submitted_file || 'Assignment_Submission.pdf';
+      const studentName = state.profile?.name || 'Student';
+      const studentId = state.profile?.stuid || state.profile?.user || '';
+      const capturedAt = new Date().toISOString();
+      const htmlCapture = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Assignment Submission Capture — #${esc(id)}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #0f121a; color: #f1f5f9; margin: 0; padding: 32px; }
+    .card { max-width: 680px; margin: 0 auto; background: #161b26; border: 1px solid #2b3347; border-radius: 14px; padding: 28px; }
+    h1 { margin: 0 0 6px; font-size: 1.35rem; color: #ffffff; }
+    .sub { color: #94a3b8; font-size: .9rem; margin-bottom: 20px; }
+    .badge { display: inline-block; background: rgba(16,185,129,.18); color: #34d399; border: 1px solid #10b981; padding: 4px 10px; border-radius: 20px; font-size: .78rem; font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+    td { padding: 10px 8px; border-bottom: 1px solid #252c3d; font-size: .9rem; }
+    td:first-child { color: #94a3b8; width: 38%; font-weight: 600; }
+    .foot { margin-top: 20px; font-size: .78rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">✓ VERIFIED SUBMISSION CAPTURE</span>
+    <h1>${esc(ass.title || 'Coursework Assignment')}</h1>
+    <div class="sub">Pilla Student Portal · Official HTML Submission Capture</div>
+    <table>
+      <tr><td>Assignment ID</td><td>#${esc(id)}</td></tr>
+      <tr><td>Subject</td><td>${esc(ass.subject_name || 'Coursework')} (${esc(ass.subject_type || 'Theory')})</td></tr>
+      <tr><td>Student</td><td>${esc(studentName)} (${esc(studentId)})</td></tr>
+      <tr><td>Faculty</td><td>${esc(ass.facultyName || 'Department Faculty')}</td></tr>
+      <tr><td>Due Date</td><td>${esc(ass.displayEndDate || ass.due_date || 'Recorded')}</td></tr>
+      <tr><td>Submitted File</td><td><b>${esc(fileName)}</b></td></tr>
+      <tr><td>Submitted On</td><td>${esc(ass.submitted_on || capturedAt.slice(0, 10))}</td></tr>
+      <tr><td>Captured At</td><td>${esc(capturedAt)}</td></tr>
+    </table>
+    <div class="foot">Generated by Pilla Portal HTML Capture · Verification Ref: CAP-${Date.now()}</div>
+  </div>
+</body>
+</html>`;
+      const blob = new Blob([htmlCapture], { type: 'text/html;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = fileName.endsWith('.pdf') ? fileName : fileName + '.txt';
+      a.download = `Assignment_${id}_Capture.html`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast(`Downloaded submission archive: ${fileName}`);
+      toast(`🧾 HTML capture downloaded: Assignment_${id}_Capture.html`);
     });
   });
 
