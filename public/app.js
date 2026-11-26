@@ -74,7 +74,10 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
 
 function splitName(display) {
   const m = String(display || '').match(/^(.*?)\(([^)]*\([^)]*\)[^)]*|[^)]*)\)\s*\(([^)]*)\)\s*$/);
@@ -119,20 +122,33 @@ $('#loginForm').addEventListener('submit', async (e) => {
 });
 
 $('#logoutBtn').addEventListener('click', async () => {
+  clearInterval(state.quizTimer);
+  clearTimeout(autoSaveTimer);
   try { await apiPost('/api/logout'); } catch {}
   state.token = null;
+  state.profile = null;
+  state.subjects = [];
+  state.allSessions = [];
+  state.assignments = [];
+  state.exams = [];
+  state.metrics = null;
+  state.quizAnswers = {};
+  state.currentExamId = null;
+  Object.keys(selectedFiles).forEach(k => delete selectedFiles[k]);
   sessionStorage.removeItem('dex_token');
+  $('#quizModal').classList.add('hidden');
+  $('#scrim').classList.add('hidden');
   $('#appView').classList.add('hidden');
   $('#loginView').classList.remove('hidden');
 });
 
 /* ---------------- App Initialization ---------------- */
 async function enterApp() {
+  await loadProfile();
+  await loadOptions();
   $('#loginView').classList.add('hidden');
   $('#appView').classList.remove('hidden');
 
-  await loadProfile();
-  await loadOptions();
   await Promise.all([
     loadAllSessions(),
     loadAssignments(),
@@ -267,9 +283,6 @@ async function loadProfile() {
   if (p.mentor && $('#icMentor')) {
     $('#icMentor').textContent = p.mentor.mentorName;
   }
-  if (p.fees && $('#icFees')) {
-    $('#icFees').textContent = `₹${p.fees.totalAmount.toLocaleString()} Paid`;
-  }
 }
 
 async function loadOptions() {
@@ -318,7 +331,11 @@ async function loadAssignments() {
     const pending = state.assignments.filter(a => a.status === 'Pending').length;
     $('#sideAssBadge').textContent = pending || '';
     renderDashboardTasks();
-  } catch {}
+  } catch {
+    if ($('#dashAssStatus') && $('#dashAssStatus').textContent === 'Loading...') {
+      $('#dashAssStatus').textContent = 'Unavailable';
+    }
+  }
 }
 
 async function loadExams() {
@@ -351,7 +368,11 @@ async function loadExams() {
     $('#examPendingCount').textContent = pending;
     $('#examCompletedCount').textContent = completed;
     renderDashboardTasks();
-  } catch {}
+  } catch {
+    if ($('#dashExamStatus') && $('#dashExamStatus').textContent === 'Loading...') {
+      $('#dashExamStatus').textContent = 'Unavailable';
+    }
+  }
 }
 
 /* ---------------- Dashboard Rendering ---------------- */
@@ -755,15 +776,16 @@ function renderAssignments(filter = 'all') {
 
   $('#assignmentsList').innerHTML = list.map(a => {
     const isComp = a.status === 'Completed';
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = iso(new Date());
     const isPastDue = !isComp && Boolean(a.due_date && a.due_date < todayStr);
-    const selFile = selectedFiles[a.id];
+    const key = a.subId ? `${a.id}_${a.subId}` : String(a.id);
+    const selFile = selectedFiles[key];
     const fileLabelText = selFile
       ? `📄 ${esc(selFile.name)} (${(selFile.size / 1024).toFixed(1)} KB)`
       : '📎 Choose or Drag assignment file...';
 
     return `
-      <div class="card ass-card" data-aid="${a.id}">
+      <div class="card ass-card" data-aid="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}">
         <div>
           <div class="ass-top">
             <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
@@ -790,15 +812,15 @@ function renderAssignments(filter = 'all') {
           ` : ''}
 
           ${!isComp ? `
-            <div class="ass-upload-box" id="assBox_${a.id}">
-              <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
-              <label for="assFile_${a.id}" class="ass-file-drop" id="assDrop_${a.id}">
+            <div class="ass-upload-box" id="assBox_${esc(key)}">
+              <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
+              <label for="assFile_${esc(key)}" class="ass-file-drop" id="assDrop_${esc(key)}">
                 <span class="ass-drop-icon">📎</span>
-                <span class="ass-drop-text" id="assText_${a.id}">${fileLabelText}</span>
+                <span class="ass-drop-text" id="assText_${esc(key)}">${fileLabelText}</span>
               </label>
               <div class="ass-action-row">
                 <span class="ass-file-hint muted" style="font-size:.78rem;">PDF, DOCX, HTML up to 10MB</span>
-                <button class="ass-upload-btn" id="assBtn_${a.id}" data-id="${a.id}" ${selFile ? '' : 'disabled'}>
+                <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" ${selFile ? '' : 'disabled'}>
                   <span>Upload & Submit</span>
                 </button>
               </div>
@@ -813,19 +835,19 @@ function renderAssignments(filter = 'all') {
                 <span>⭐ Status: Evaluated & Recorded</span>
               </div>
               <div class="ass-btn-row">
-                <button class="ass-resubmit-btn" data-id="${a.id}">
+                <button class="ass-resubmit-btn" data-key="${esc(key)}">
                   🔄 Re-submit File
                 </button>
               </div>
-              <div class="ass-upload-box hidden" id="assReBox_${a.id}" style="margin-top:8px;">
-                <input type="file" id="assFile_${a.id}" class="ass-file-input" data-id="${a.id}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
-                <label for="assFile_${a.id}" class="ass-file-drop">
+              <div class="ass-upload-box hidden" id="assReBox_${esc(key)}" style="margin-top:8px;">
+                <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
+                <label for="assFile_${esc(key)}" class="ass-file-drop">
                   <span class="ass-drop-icon">📎</span>
-                  <span class="ass-drop-text" id="assText_${a.id}">Choose new file...</span>
+                  <span class="ass-drop-text" id="assText_${esc(key)}">Choose new file...</span>
                 </label>
                 <div class="ass-action-row">
                   <span class="muted" style="font-size:.78rem;">Replace previous submission</span>
-                  <button class="ass-upload-btn" id="assBtn_${a.id}" data-id="${a.id}" disabled>
+                  <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" disabled>
                     <span>Update Submission</span>
                   </button>
                 </div>
@@ -847,18 +869,26 @@ function renderAssignments(filter = 'all') {
 }
 
 function wireAssignmentInteractions() {
+  const MAX_BYTES = 10 * 1024 * 1024;
+  const pickFile = (key, file, cardEl) => {
+    if (!file) return;
+    if (file.size > MAX_BYTES) {
+      toast('File exceeds 10MB limit. Please choose a smaller file.', true);
+      return;
+    }
+    selectedFiles[key] = file;
+    const textEl = cardEl ? cardEl.querySelector('.ass-drop-text') : $('#assText_' + key);
+    if (textEl) textEl.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    const btn = cardEl ? cardEl.querySelector('.ass-upload-btn') : $('#assBtn_' + key);
+    if (btn) btn.disabled = false;
+  };
+
   // File inputs
   $$('.ass-file-input').forEach(input => {
     input.addEventListener('change', (e) => {
-      const id = input.dataset.id;
+      const key = input.dataset.key || input.dataset.id;
       const file = e.target.files && e.target.files[0];
-      if (file) {
-        selectedFiles[id] = file;
-        const textEl = $('#assText_' + id);
-        if (textEl) textEl.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        const btn = $('#assBtn_' + id);
-        if (btn) btn.disabled = false;
-      }
+      pickFile(key, file, input.closest('.ass-card'));
     });
   });
 
@@ -866,58 +896,71 @@ function wireAssignmentInteractions() {
   $$('.ass-upload-box').forEach(box => {
     const input = box.querySelector('.ass-file-input');
     if (!input) return;
-    const id = input.dataset.id;
+    const key = input.dataset.key || input.dataset.id;
     box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drag-over'); });
     box.addEventListener('dragleave', () => box.classList.remove('drag-over'));
     box.addEventListener('drop', (e) => {
       e.preventDefault();
       box.classList.remove('drag-over');
       if (e.dataTransfer.files && e.dataTransfer.files.length) {
-        const file = e.dataTransfer.files[0];
-        selectedFiles[id] = file;
-        const textEl = $('#assText_' + id);
-        if (textEl) textEl.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        const btn = $('#assBtn_' + id);
-        if (btn) btn.disabled = false;
+        pickFile(key, e.dataTransfer.files[0], box.closest('.ass-card'));
       }
     });
   });
 
   // Submit buttons
   $$('.ass-upload-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const id = btn.dataset.id;
-      const file = selectedFiles[id];
+      const subId = btn.dataset.subId || '';
+      const key = btn.dataset.key || id;
+      const file = selectedFiles[key];
       if (!file) {
         toast('Please choose a file to submit', true);
         return;
       }
+      if (file.size > MAX_BYTES) {
+        toast('File exceeds 10MB limit. Please choose a smaller file.', true);
+        return;
+      }
+      const origHtml = btn.innerHTML;
       btn.disabled = true;
       btn.innerHTML = '<span>Uploading...</span>';
 
       const reader = new FileReader();
+      reader.onerror = () => {
+        toast('Failed to read selected file', true);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      };
       reader.onload = async () => {
         try {
           const res = await apiPost('/api/assignment/submit', {
             assignment_id: Number(id),
+            sub_id: subId,
             file_name: file.name,
             file_data: reader.result,
             remarks: 'Submitted via student portal'
           });
 
-          // Update local state
-          const item = state.assignments.find(a => String(a.id) === String(id));
-          if (item) {
-            item.status = 'Completed';
-            item.submitted_on = res.assignment?.submitted_on || new Date().toISOString().slice(0, 10);
-            item.submitted_file = file.name;
+          if (Array.isArray(res.assignments) && res.assignments.length && state.profile?.user !== 'DEMO123') {
+            state.assignments = res.assignments;
+          } else {
+            const item = state.assignments.find(a =>
+              subId ? (String(a.id) === String(id) && String(a.subId || '') === subId) : (String(a.id) === String(id))
+            );
+            if (item) {
+              item.status = 'Completed';
+              item.submitted_on = res.assignment?.submitted_on || iso(new Date());
+              item.submitted_file = file.name;
+            }
           }
-          delete selectedFiles[id];
+          delete selectedFiles[key];
           const pending = state.assignments.filter(a => a.status === 'Pending').length;
           $('#sideAssBadge').textContent = pending || '';
 
           if (state.profile?.user === 'DEMO123') {
-            saveAssignmentLocally(id, file.name, new Date().toISOString().slice(0, 10));
+            saveAssignmentLocally(id, file.name, iso(new Date()));
           }
           renderDashboardTasks();
           const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : '';
@@ -926,7 +969,7 @@ function wireAssignmentInteractions() {
         } catch (err) {
           toast(err.message || 'Upload failed', true);
           btn.disabled = false;
-          btn.innerHTML = '<span>Upload & Submit</span>';
+          btn.innerHTML = origHtml;
         }
       };
       reader.readAsDataURL(file);
@@ -936,8 +979,8 @@ function wireAssignmentInteractions() {
   // Re-submit buttons
   $$('.ass-resubmit-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const id = btn.dataset.id;
-      const reBox = $('#assReBox_' + id);
+      const key = btn.dataset.key || btn.dataset.id;
+      const reBox = document.getElementById('assReBox_' + key);
       if (reBox) reBox.classList.toggle('hidden');
     });
   });
@@ -1059,10 +1102,15 @@ function renderExamReviewList(questions, submittedAnswers = null) {
     const hasKey = Boolean(q.correctAnswerId);
     const selectedId = hasSubmittedMap ? submittedAnswers[q.qid] : q.correctAnswerId;
     const selectedList = String(selectedId ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    const normSet = (v) => String(v ?? '').split(',').map(s => s.trim()).filter(Boolean).sort().join(',');
     const isCorrect = !hasKey
       ? true
       : (hasSubmittedMap
-          ? (selectedId !== undefined && selectedId !== null && String(selectedId) === String(q.correctAnswerId))
+          ? (selectedId !== undefined && selectedId !== null && (
+              String(q.correctAnswerId).includes(',')
+                ? normSet(selectedId) === normSet(q.correctAnswerId)
+                : String(selectedId).trim() === String(q.correctAnswerId).trim()
+            ))
           : true);
 
     return `
@@ -1076,7 +1124,7 @@ function renderExamReviewList(questions, submittedAnswers = null) {
             ${!hasKey ? (selectedList.length || selectedId ? '✓ Response Recorded' : 'Not Answered') : (isCorrect ? `+${qMarks} Mark${qMarks === 1 ? '' : 's'} (Correct)` : `0 Marks (${selectedList.length ? 'Incorrect' : 'Not Answered'})`)}
           </div>
         ` : ''}
-        ${qType === 'ONE-WORD' ? `
+        ${(qType === 'ONE-WORD' || qType === 'DESCRIPTIVE') ? `
           <div class="qr-opt-list">
             <div class="qr-opt ${selectedId ? 'is-correct' : ''}">
               <span>Your Answer: <b>${esc(selectedId || 'Not Answered')}</b></span>
@@ -1112,9 +1160,13 @@ function renderExamReviewList(questions, submittedAnswers = null) {
   }).join('');
 }
 
+let quizModalSeq = 0;
+
 async function openQuizModal(examId, title, subj, isReview = false) {
+  const seq = ++quizModalSeq;
   state.currentExamId = examId;
   clearInterval(state.quizTimer);
+  clearTimeout(autoSaveTimer);
   $('#quizModal').classList.remove('hidden');
   $('#scrim').classList.remove('hidden');
 
@@ -1131,6 +1183,7 @@ async function openQuizModal(examId, title, subj, isReview = false) {
 
     try {
       const qData = await apiPost('/api/exam/questions', { exam_id: examId });
+      if (seq !== quizModalSeq || $('#quizModal').classList.contains('hidden')) return;
       currentExamQuestions = qData.questions || [];
       const ex = state.exams.find(e => String(e.examId) === String(examId));
       const total = currentExamQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0) || getExamDisplayTotal(ex);
@@ -1143,7 +1196,7 @@ async function openQuizModal(examId, title, subj, isReview = false) {
         : `Submitted on portal (marks hidden by faculty). Showing verified answer key.`;
       $('#qrReview').innerHTML = renderExamReviewList(currentExamQuestions, ex?.submittedAnswers || null);
     } catch (err) {
-      toast('Failed to load review', true);
+      if (seq === quizModalSeq) toast('Failed to load review', true);
     }
   } else {
     // Quiz Taking Mode
@@ -1163,13 +1216,16 @@ async function openQuizModal(examId, title, subj, isReview = false) {
 
       // Fetch questions
       const qData = await apiPost('/api/exam/questions', { exam_id: examId });
+      if (seq !== quizModalSeq || $('#quizModal').classList.contains('hidden')) return;
       currentExamQuestions = qData.questions || [];
       renderQuizQuestions(currentExamQuestions);
       $('#submitQuizBtn').disabled = false;
       startQuizTimer();
     } catch (err) {
-      toast('Failed to load examination questions', true);
-      closeQuizModal();
+      if (seq === quizModalSeq) {
+        toast('Failed to load examination questions', true);
+        closeQuizModal();
+      }
     }
   }
 }
@@ -1220,7 +1276,22 @@ function renderQuizQuestions(questions) {
       `;
     }
 
-    const inputType = qType === 'MULTIPLE-SELECT' ? 'checkbox' : 'radio';
+    if (qType === 'DESCRIPTIVE') {
+      return `
+        <div class="q-item" data-qid="${esc(q.qid)}">
+          <div class="q-title">
+            <span class="q-num">Q${idx + 1}.</span>
+            <span>${esc(q.text)}</span>
+          </div>
+          ${imgHtml}
+          <div class="q-options">
+            <textarea class="q-oneword-input" data-qid="${esc(q.qid)}" rows="4" placeholder="Write your answer..."></textarea>
+          </div>
+        </div>
+      `;
+    }
+
+    const inputType = (qType === 'MULTIPLE-SELECT' || (qType === 'MULTIPLE-CHOICE' && !correctId)) ? 'checkbox' : 'radio';
     return `
     <div class="q-item" data-qid="${esc(q.qid)}">
       <div class="q-title">
@@ -1385,7 +1456,9 @@ async function submitQuiz() {
 }
 
 function closeQuizModal() {
+  quizModalSeq++;
   clearInterval(state.quizTimer);
+  clearTimeout(autoSaveTimer);
   $('#quizModal').classList.add('hidden');
   $('#scrim').classList.add('hidden');
   renderDashboardTasks();
@@ -1457,8 +1530,12 @@ $('#hamburger').addEventListener('click', openSidebar);
   state.token = saved;
   try {
     await enterApp();
-  } catch {
-    state.token = null;
-    sessionStorage.removeItem('dex_token');
+  } catch (err) {
+    if (!err || err.status === 401 || err.status === 403) {
+      state.token = null;
+      sessionStorage.removeItem('dex_token');
+    } else {
+      toast(err.message || 'Could not reconnect to portal', true);
+    }
   }
 })();

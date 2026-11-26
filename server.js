@@ -70,6 +70,23 @@ function verifyJwt(token) {
   }
 }
 
+function safeJsonParse(text) {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try { return JSON.parse(trimmed); } catch {}
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+  return null;
+}
+
+function istDateStr(ms = Date.now()) {
+  return new Date(ms + 19800000).toISOString().slice(0, 10);
+}
+
 /* ------------------------------------------------------------------ */
 /* Live Portal Authentication (portal.vmedulife.com)                  */
 /* ------------------------------------------------------------------ */
@@ -92,7 +109,7 @@ async function liveAuthenticate(username, password) {
     });
 
     const text = await res.text();
-    const json = JSON.parse(text.trim());
+    const json = safeJsonParse(text) || {};
 
     if (json.success === 'true' && json.studentData) {
       return { ok: true, data: json };
@@ -274,9 +291,9 @@ function parseBody(buf, contentType = '') {
   }
   if (contentType.includes('multipart/form-data')) {
     const out = {};
-    const m = contentType.match(/boundary=(.+)$/);
+    const m = contentType.match(/boundary=([^;\s]+)/i);
     if (m) {
-      const boundary = m[1].trim();
+      const boundary = m[1].trim().replace(/^"|"$/g, '');
       const parts = text.split('--' + boundary);
       for (const p of parts) {
         const nm = p.match(/name="([^"]+)"\r?\n\r?\n([\s\S]*?)\r?\n?$/);
@@ -291,7 +308,13 @@ function parseBody(buf, contentType = '') {
   const out = {};
   for (const pair of text.split('&')) {
     const [k, v = ''] = pair.split('=');
-    if (k) out[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' '));
+    if (k) {
+      try {
+        out[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' '));
+      } catch {
+        out[k] = v;
+      }
+    }
   }
   return out;
 }
@@ -482,15 +505,20 @@ async function handleApi(req, res, url) {
   const user = DB.users[username] || DB.users['DEMO123'];
   const userSessions = DB.sessionsByUser[username] || DB.sessionsByUser['DEMO123'];
 
-  // Helper: ensure live student sessions are loaded
-  async function ensureLiveSessions() {
-    if (vmeduLive && user.stuid && user.sid && user.groupid && !user._liveLoaded) {
+  // Helper: ensure live student sessions are loaded (skip DEMO123; refresh on 60s TTL)
+  async function ensureLiveSessions(force = false) {
+    if (user.username === 'DEMO123') return;
+    const stale = !user._liveLoaded || (Date.now() - (user._liveLoadedAt || 0) > 60000);
+    if (vmeduLive && user.stuid && user.sid && user.groupid && (force || stale)) {
       try {
+        const batchInput = (Array.isArray(user.batchIds) && user.batchIds.length)
+          ? user.batchIds
+          : (user.buid || 70134);
         const liveRes = await vmeduLive.getLiveStudentSessions(
           user.stuid,
           user.sid,
           user.groupid,
-          user.buid || 70134,
+          batchInput,
           user.acayr || 12,
           '2026-06-01',
           '2026-12-31'
@@ -498,6 +526,7 @@ async function handleApi(req, res, url) {
         if (liveRes && liveRes.items && liveRes.items.length) {
           DB.sessionsByUser[username] = liveRes.items;
           user._liveLoaded = true;
+          user._liveLoadedAt = Date.now();
           user._liveMetrics = liveRes.metrics;
 
           // dynamically populate subjects from real class sessions
@@ -508,11 +537,11 @@ async function handleApi(req, res, url) {
               const codeMatch = disp.match(/\(([^)]+)\)\s*\([^)]*\)\s*$/);
               liveSubjs[s.subject_id] = {
                 subject_id: s.subject_id,
-                subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
+                subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*(Regular|Elective)\s*\)/i, '').trim(),
                 display_name: disp,
                 course_code: codeMatch ? codeMatch[1].trim() : '',
                 subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
-                subject_choice: 'regular'
+                subject_choice: s.subject_name.includes('Elective') ? 'elective' : 'regular'
               };
             }
           });
@@ -575,6 +604,7 @@ async function handleApi(req, res, url) {
     if (mode === 'subject') {
       subject_id = Number(body.subject_id);
       items = items.filter(x => x.subject_id === subject_id);
+      items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
       if (items.length) {
         date_from = items[items.length - 1].date;
         date_to = items[0].date;
@@ -583,9 +613,9 @@ async function handleApi(req, res, url) {
       if (!date_from.startsWith('2000')) {
         items = items.filter(x => x.date >= date_from && x.date <= date_to);
       }
+      items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     }
 
-    items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     items = items.map((x, i) => ({ ...x, session_index: i }));
     return send(res, 200, {
       count: items.length,
@@ -608,11 +638,12 @@ async function handleApi(req, res, url) {
     const previous = sess.attendance_status;
     const next = route === '/api/present' ? 'Present' : 'Absent';
 
-    // Live Upstream Call to portal.vmedulife.com
+    // Live Upstream Call to portal.vmedulife.com (never for DEMO123)
     let upstreamStatus = 'simulated';
-    if (vmeduLive && user.stuid && user.sid && user.groupid) {
+    if (user.username !== 'DEMO123' && vmeduLive && user.stuid && user.sid && user.groupid) {
+      let up = null;
       try {
-        const up = await vmeduLive.updateLiveAttendance(
+        up = await vmeduLive.updateLiveAttendance(
           user.stuid,
           sid,
           next,
@@ -621,16 +652,23 @@ async function handleApi(req, res, url) {
           user.groupid,
           user.acayr || 12
         );
-        if (up && up.ok) {
-          upstreamStatus = 'success';
-        }
       } catch (err) {
         console.warn('[Live Upstream] Attendance update error:', err.message);
+        up = { ok: false, error: err.message };
+      }
+      if (up && up.ok) {
+        upstreamStatus = 'success';
+      } else {
+        return send(res, 400, {
+          ok: false,
+          detail: (up && up.error) || 'Failed to update attendance on main portal',
+          upstream_status: 'failed'
+        });
       }
     }
 
     sess.attendance_status = next;
-    sess.simulated_status = next === sess.source_status ? null : next;
+    sess.simulated_status = user.username === 'DEMO123' && next !== sess.source_status ? next : null;
     sess.updated_at = new Date().toISOString();
 
     const metrics = computeMetrics(currentSessions);
@@ -676,12 +714,14 @@ async function handleApi(req, res, url) {
   // 8.1 Submit Assignment (Upload & Submit — direct live sync)
   if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && req.method === 'POST') {
     const aid = Number(body.assignment_id || body.assignmentId);
+    const subId = body.sub_id || body.subAssignmentId ? String(body.sub_id || body.subAssignmentId) : '';
     const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
     const fileData = body.file_data || body.fileData || '';
     const remarks = body.remarks || 'Submitted via portal';
 
     const userAssignments = getUserAssignments(username);
-    const a = userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+    const a = (subId && userAssignments.find(x => String(x.id) === String(aid) && String(x.subId || '') === subId))
+      || userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
     if (!a) {
       return send(res, 404, { ok: false, detail: 'Assignment not found' });
     }
@@ -710,11 +750,17 @@ async function handleApi(req, res, url) {
       }
     }
 
-    a.status = 'Completed';
-    a._localSubmitted = true;
-    a.submitted_on = new Date().toISOString().slice(0, 10);
-    a.submitted_file = fileName;
-    a.remarks = remarks;
+    const todayIst = istDateStr();
+    const updatedList = getUserAssignments(username);
+    const refreshedItem = (subId && updatedList.find(x => String(x.id) === String(aid) && String(x.subId || '') === subId))
+      || updatedList.find(x => x.id === aid || String(x.id) === String(aid))
+      || a;
+    if (user.username === 'DEMO123' || refreshedItem.status !== 'Completed') {
+      refreshedItem.status = 'Completed';
+      refreshedItem.submitted_on = refreshedItem.submitted_on || todayIst;
+      refreshedItem.submitted_file = fileName;
+      refreshedItem.remarks = remarks;
+    }
 
     // Optional safe local disk backup
     if (fileData) {
@@ -727,7 +773,6 @@ async function handleApi(req, res, url) {
       } catch (err) {}
     }
 
-    const updatedList = getUserAssignments(username);
     const pending = updatedList.filter(x => x.status === 'Pending').length;
     return send(res, 200, {
       ok: true,
@@ -735,7 +780,7 @@ async function handleApi(req, res, url) {
       status: 'success',
       upstream_status,
       message: 'Assignment submitted and verified successfully.',
-      assignment: a,
+      assignment: refreshedItem,
       assignments: updatedList,
       pending_count: pending,
       completed_count: updatedList.length - pending
@@ -882,11 +927,16 @@ async function handleApi(req, res, url) {
     let score = 0;
     let totalMarks = 0;
     const questionResults = [];
+    const normAns = (val) => String(val ?? '').split(',').map(s => s.trim()).filter(Boolean).sort().join(',');
     questions.forEach((q, idx) => {
       const qMarks = Number(q.marks) || 1;
       totalMarks += qMarks;
       const selected = answers[q.qid];
-      const isCorrect = Boolean(q.correctAnswerId) && selected !== undefined && selected !== null && String(selected) === String(q.correctAnswerId);
+      const isCorrect = Boolean(q.correctAnswerId) && selected !== undefined && selected !== null && (
+        String(q.correctAnswerId).includes(',')
+          ? normAns(selected) === normAns(q.correctAnswerId)
+          : String(selected).trim() === String(q.correctAnswerId).trim()
+      );
       if (isCorrect) score += qMarks;
       questionResults.push({
         qIndex: idx + 1,

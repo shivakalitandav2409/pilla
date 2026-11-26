@@ -8,6 +8,35 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+function safeJsonParse(text) {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try { return JSON.parse(trimmed); } catch {}
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+  return null;
+}
+
+function inferMimeType(fileName = '') {
+  const ext = String(fileName).toLowerCase().split('.').pop();
+  const map = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+    html: 'text/html',
+    htm: 'text/html',
+    zip: 'application/zip',
+    py: 'text/x-python',
+    cpp: 'text/x-c++src'
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
 let cachedCookie = null;
 let cachedAuth = null;
 
@@ -234,6 +263,11 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
     return timeA.localeCompare(timeB);
   });
 
+  const batchSet = new Set(
+    (Array.isArray(batchId) ? batchId : [batchId])
+      .map(b => Number(b))
+      .filter(b => Number.isFinite(b) && b > 0)
+  );
   let sessionIndex = 0;
   for (const [id, s] of entries) {
     if (!s || typeof s !== 'object') continue;
@@ -245,7 +279,7 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
     } else {
       const sBatch = Number(s.batchId) || 0;
       if (sBatch === 0) applies = true;
-      else if (batchId && Number(batchId) > 0) applies = (Number(batchId) === sBatch);
+      else if (batchSet.size > 0) applies = batchSet.has(sBatch);
     }
 
     if (!applies) continue;
@@ -321,7 +355,8 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
  * Modify student attendance live on portal.vmedulife.com using faculty API
  */
 async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, groupId, acayr) {
-  const fa = getFacultyAuth();
+  let fa = getFacultyAuth();
+  if (!fa) fa = await refreshFacultySession();
   if (!fa) return { ok: false, error: 'No faculty session' };
 
   try {
@@ -436,10 +471,10 @@ async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, 
     });
 
     const upText = await upRes.text();
-    const upJson = JSON.parse(upText.trim());
+    const upJson = safeJsonParse(upText) || {};
 
     const ok = upJson && (upJson.success === true || upJson.success === 'true' || upJson.status === 'success');
-    return { ok: Boolean(ok), data: upJson };
+    return { ok: Boolean(ok), data: upJson, error: ok ? undefined : (upJson.message || 'Upstream attendance update failed') };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -508,11 +543,11 @@ async function postOnlineExamApi(user, actionName, dataObj) {
       body: params.toString()
     });
     const text = await res.text();
-    return JSON.parse(text.trim());
+    return safeJsonParse(text);
   };
 
   let json = await sendReq(token);
-  if (json && json.message === 'Unauthorized request.') {
+  if (!json || json.message === 'Unauthorized request.') {
     token = await getLearnerAuthToken(user, true);
     if (token) {
       json = await sendReq(token);
@@ -760,11 +795,11 @@ async function postAssignmentsApi(user, apiName, apiInput) {
       body: params.toString()
     });
     const text = await res.text();
-    return JSON.parse(text.trim());
+    return safeJsonParse(text);
   };
 
   let json = await sendReq(token);
-  if (json && (json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false)) {
+  if (!json || json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false) {
     token = await getLearnerAuthToken(user, true);
     if (token) json = await sendReq(token);
   }
@@ -865,6 +900,8 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
     const token = await getLearnerAuthToken(user);
     if (!token) return { ok: false, upstream_status: 'simulated', error: 'No learner auth token' };
 
+    const mimeMatch = String(fileData || '').match(/^data:([^;]+);base64,/i);
+    const fileMime = (mimeMatch && mimeMatch[1]) || inferMimeType(fileName);
     const base64Data = fileData && String(fileData).includes('base64,')
       ? String(fileData).split('base64,')[1]
       : String(fileData || '');
@@ -906,7 +943,7 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
     form.append('assignmentId', assignmentId);
     form.append('examId', examId);
     form.append('remarks', String(remarks || 'Submitted via student portal'));
-    form.append('file', new Blob([fileBuf], { type: 'application/pdf' }), fileName || 'assignment.pdf');
+    form.append('file', new Blob([fileBuf], { type: fileMime }), fileName || 'assignment.pdf');
     form.append('data', Buffer.from(JSON.stringify(secureUploadInput)).toString('base64'));
     form.append('tokenInputParameter', tokenParam);
 
@@ -921,8 +958,7 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
       body: form
     });
     const text = await res.text();
-    let json = {};
-    try { json = JSON.parse(text.trim()); } catch {}
+    const json = safeJsonParse(text) || {};
     const ok = Boolean(json && (json.success === true || json.success === 'true' || json.status === 'success'));
     return { ok, upstream_status: ok ? 'success' : 'failed', data: json, error: json.message };
   } catch (err) {

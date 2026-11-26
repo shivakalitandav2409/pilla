@@ -52,6 +52,39 @@ function verifyJwt(token) {
   }
 }
 
+function safeJsonParse(text) {
+  if (!text || typeof text !== 'string') return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  try { return JSON.parse(trimmed); } catch {}
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    try { return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1)); } catch {}
+  }
+  return null;
+}
+
+function inferMimeType(fileName = '') {
+  const ext = String(fileName).toLowerCase().split('.').pop();
+  const map = {
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+    html: 'text/html',
+    htm: 'text/html',
+    zip: 'application/zip',
+    py: 'text/x-python',
+    cpp: 'text/x-c++src'
+  };
+  return map[ext] || 'application/octet-stream';
+}
+
+function istDateStr(ms = Date.now()) {
+  return new Date(ms + 19800000).toISOString().slice(0, 10);
+}
+
 /* ---------------- Live Portal Authentication ---------------- */
 async function liveAuthenticate(username, password) {
   try {
@@ -72,7 +105,7 @@ async function liveAuthenticate(username, password) {
     });
 
     const text = await res.text();
-    const json = JSON.parse(text.trim());
+    const json = safeJsonParse(text) || {};
 
     if (json.success === 'true' && json.studentData) {
       return { ok: true, data: json };
@@ -420,6 +453,11 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
     return timeA.localeCompare(timeB);
   });
 
+  const batchSet = new Set(
+    (Array.isArray(batchId) ? batchId : [batchId])
+      .map(b => Number(b))
+      .filter(b => Number.isFinite(b) && b > 0)
+  );
   let sessionIndex = 0;
   for (const [id, s] of entries) {
     if (!s || typeof s !== 'object') continue;
@@ -430,7 +468,7 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
     } else {
       const sBatch = Number(s.batchId) || 0;
       if (sBatch === 0) applies = true;
-      else if (batchId && Number(batchId) > 0) applies = (Number(batchId) === sBatch);
+      else if (batchSet.size > 0) applies = batchSet.has(sBatch);
     }
 
     if (!applies) continue;
@@ -502,7 +540,8 @@ async function getLiveStudentSessions(studentId, sid, groupId, batchId, acayr, s
 }
 
 async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, groupId, acayr) {
-  const fa = getFacultyAuth();
+  let fa = getFacultyAuth();
+  if (!fa) fa = await refreshFacultyAuth();
   if (!fa) return { ok: false, error: 'No faculty session' };
 
   try {
@@ -615,9 +654,10 @@ async function updateLiveAttendance(studentId, sessionId, newStatus, date, sid, 
       body: updateFormData.toString()
     });
 
-    const upJson = await upRes.json().catch(() => ({}));
+    const upText = await upRes.text();
+    const upJson = safeJsonParse(upText) || {};
     const ok = upJson && (upJson.success === true || upJson.success === 'true' || upJson.status === 'success');
-    return { ok: Boolean(ok), data: upJson };
+    return { ok: Boolean(ok), data: upJson, error: ok ? undefined : (upJson.message || 'Upstream attendance update failed') };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -679,11 +719,11 @@ async function postOnlineExamApi(user, actionName, dataObj) {
       body: params.toString()
     });
     const text = await res.text();
-    return JSON.parse(text.trim());
+    return safeJsonParse(text);
   };
 
   let json = await sendReq(token);
-  if (json && json.message === 'Unauthorized request.') {
+  if (!json || json.message === 'Unauthorized request.') {
     token = await getLearnerAuthToken(user, true);
     if (token) json = await sendReq(token);
   }
@@ -917,11 +957,11 @@ async function postAssignmentsApi(user, apiName, apiInput) {
       body: params.toString()
     });
     const text = await res.text();
-    return JSON.parse(text.trim());
+    return safeJsonParse(text);
   };
 
   let json = await sendReq(token);
-  if (json && (json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false)) {
+  if (!json || json.message === 'Unauthorized request.' || json.success === 'false' || json.success === false) {
     token = await getLearnerAuthToken(user, true);
     if (token) json = await sendReq(token);
   }
@@ -1020,6 +1060,8 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
     const token = await getLearnerAuthToken(user);
     if (!token) return { ok: false, upstream_status: 'simulated', error: 'No learner auth token' };
 
+    const mimeMatch = String(fileData || '').match(/^data:([^;]+);base64,/i);
+    const fileMime = (mimeMatch && mimeMatch[1]) || inferMimeType(fileName);
     const base64Data = fileData && String(fileData).includes('base64,')
       ? String(fileData).split('base64,')[1]
       : String(fileData || '');
@@ -1061,7 +1103,7 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
     form.append('assignmentId', assignmentId);
     form.append('examId', examId);
     form.append('remarks', String(remarks || 'Submitted via student portal'));
-    form.append('file', new Blob([fileBuf], { type: 'application/pdf' }), fileName || 'assignment.pdf');
+    form.append('file', new Blob([fileBuf], { type: fileMime }), fileName || 'assignment.pdf');
     form.append('data', Buffer.from(JSON.stringify(secureUploadInput)).toString('base64'));
     form.append('tokenInputParameter', tokenParam);
 
@@ -1076,8 +1118,7 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
       body: form
     });
     const text = await res.text();
-    let json = {};
-    try { json = JSON.parse(text.trim()); } catch {}
+    const json = safeJsonParse(text) || {};
     const ok = Boolean(json && (json.success === true || json.success === 'true' || json.status === 'success'));
     return { ok, upstream_status: ok ? 'success' : 'failed', data: json, error: json.message };
   } catch (err) {
@@ -1248,14 +1289,19 @@ export default {
       const user = DB.users[username] || DB.users['DEMO123'];
       const userSessions = DB.sessionsByUser[username] || DB.sessionsByUser['DEMO123'];
 
-      async function ensureLiveSessions() {
-        if (user.stuid && user.sid && user.groupid && !user._liveLoaded) {
+      async function ensureLiveSessions(force = false) {
+        if (user.username === 'DEMO123') return;
+        const stale = !user._liveLoaded || (Date.now() - (user._liveLoadedAt || 0) > 60000);
+        if (user.stuid && user.sid && user.groupid && (force || stale)) {
           try {
+            const batchInput = (Array.isArray(user.batchIds) && user.batchIds.length)
+              ? user.batchIds
+              : (user.buid || 70134);
             const liveRes = await getLiveStudentSessions(
               user.stuid,
               user.sid,
               user.groupid,
-              user.buid || 70134,
+              batchInput,
               user.acayr || 12,
               '2026-06-01',
               '2026-12-31'
@@ -1263,6 +1309,7 @@ export default {
             if (liveRes && liveRes.items && liveRes.items.length) {
               DB.sessionsByUser[username] = liveRes.items;
               user._liveLoaded = true;
+              user._liveLoadedAt = Date.now();
               user._liveMetrics = liveRes.metrics;
 
               const liveSubjs = {};
@@ -1272,11 +1319,11 @@ export default {
                   const codeMatch = disp.match(/\(([^)]+)\)\s*\([^)]*\)\s*$/);
                   liveSubjs[s.subject_id] = {
                     subject_id: s.subject_id,
-                    subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*Regular\s*\)/i, '').trim(),
+                    subject_name: s.subject_name.replace(/\s*\(\s*(Theory|Practical)\s*\|\s*(Regular|Elective)\s*\)/i, '').trim(),
                     display_name: disp,
                     course_code: codeMatch ? codeMatch[1].trim() : '',
                     subject_type: s.subject_name.includes('Practical') ? 'Practical' : 'Theory',
-                    subject_choice: 'regular'
+                    subject_choice: s.subject_name.includes('Elective') ? 'elective' : 'regular'
                   };
                 }
               });
@@ -1332,13 +1379,14 @@ export default {
         if (mode === 'subject') {
           subject_id = Number(body.subject_id);
           items = items.filter(x => x.subject_id === subject_id);
+          items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
           if (items.length) { date_from = items[items.length - 1].date; date_to = items[0].date; }
         } else {
           if (!date_from.startsWith('2000')) {
             items = items.filter(x => x.date >= date_from && x.date <= date_to);
           }
+          items.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
         }
-        items.sort((a, b) => (a.date < b.date ? 1 : -1));
         return jsonResponse({ count: items.length, mode, subject_id, items: items.map((x, i) => ({ ...x, session_index: i })), date_from, date_to });
       }
 
@@ -1353,9 +1401,10 @@ export default {
         const next = route === '/api/present' ? 'Present' : 'Absent';
 
         let upstreamStatus = 'simulated';
-        if (user.stuid && user.sid && user.groupid) {
+        if (user.username !== 'DEMO123' && user.stuid && user.sid && user.groupid) {
+          let up = null;
           try {
-            const up = await updateLiveAttendance(
+            up = await updateLiveAttendance(
               user.stuid,
               sid,
               next,
@@ -1364,14 +1413,22 @@ export default {
               user.groupid,
               user.acayr || 12
             );
-            if (up && up.ok) {
-              upstreamStatus = 'success';
-            }
-          } catch (err) {}
+          } catch (err) {
+            up = { ok: false, error: err.message };
+          }
+          if (up && up.ok) {
+            upstreamStatus = 'success';
+          } else {
+            return jsonResponse({
+              ok: false,
+              detail: (up && up.error) || 'Failed to update attendance on main portal',
+              upstream_status: 'failed'
+            }, 400);
+          }
         }
 
         sess.attendance_status = next;
-        sess.simulated_status = next === sess.source_status ? null : next;
+        sess.simulated_status = user.username === 'DEMO123' && next !== sess.source_status ? next : null;
         sess.updated_at = new Date().toISOString();
 
         const metrics = computeMetrics(currentSessions);
@@ -1406,12 +1463,14 @@ export default {
 
       if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && request.method === 'POST') {
         const aid = Number(body.assignment_id || body.assignmentId);
+        const subId = body.sub_id || body.subAssignmentId ? String(body.sub_id || body.subAssignmentId) : '';
         const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
         const fileData = body.file_data || body.fileData || '';
         const remarks = body.remarks || 'Submitted via portal';
 
         const userAssignments = getUserAssignments(username);
-        const a = userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
+        const a = (subId && userAssignments.find(x => String(x.id) === String(aid) && String(x.subId || '') === subId))
+          || userAssignments.find(x => x.id === aid || String(x.id) === String(body.assignment_id || body.assignmentId));
         if (!a) {
           return jsonResponse({ ok: false, detail: 'Assignment not found' }, 404);
         }
@@ -1440,13 +1499,18 @@ export default {
           }
         }
 
-        a.status = 'Completed';
-        a._localSubmitted = true;
-        a.submitted_on = new Date().toISOString().slice(0, 10);
-        a.submitted_file = fileName;
-        a.remarks = remarks;
-
+        const todayIst = istDateStr();
         const updatedList = getUserAssignments(username);
+        const refreshedItem = (subId && updatedList.find(x => String(x.id) === String(aid) && String(x.subId || '') === subId))
+          || updatedList.find(x => x.id === aid || String(x.id) === String(aid))
+          || a;
+        if (user.username === 'DEMO123' || refreshedItem.status !== 'Completed') {
+          refreshedItem.status = 'Completed';
+          refreshedItem.submitted_on = refreshedItem.submitted_on || todayIst;
+          refreshedItem.submitted_file = fileName;
+          refreshedItem.remarks = remarks;
+        }
+
         const pending = updatedList.filter(x => x.status === 'Pending').length;
         return jsonResponse({
           ok: true,
@@ -1454,7 +1518,7 @@ export default {
           status: 'success',
           upstream_status,
           message: 'Assignment submitted and verified successfully.',
-          assignment: a,
+          assignment: refreshedItem,
           assignments: updatedList,
           pending_count: pending,
           completed_count: updatedList.length - pending
@@ -1593,11 +1657,16 @@ export default {
         let score = 0;
         let totalMarks = 0;
         const questionResults = [];
+        const normAns = (val) => String(val ?? '').split(',').map(s => s.trim()).filter(Boolean).sort().join(',');
         questions.forEach((q, idx) => {
           const qMarks = Number(q.marks) || 1;
           totalMarks += qMarks;
           const selected = answers[q.qid];
-          const isCorrect = Boolean(q.correctAnswerId) && selected !== undefined && selected !== null && String(selected) === String(q.correctAnswerId);
+          const isCorrect = Boolean(q.correctAnswerId) && selected !== undefined && selected !== null && (
+            String(q.correctAnswerId).includes(',')
+              ? normAns(selected) === normAns(q.correctAnswerId)
+              : String(selected).trim() === String(q.correctAnswerId).trim()
+          );
           if (isCorrect) score += qMarks;
           questionResults.push({
             qIndex: idx + 1,
