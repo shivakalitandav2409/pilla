@@ -29,10 +29,7 @@ const {
   NOTIFICATIONS,
   ASSIGNMENTS,
   NAVIGATION_MODULES,
-  getExamQuestions,
-  parseRemainingSeconds,
-  formatIstDateTime,
-  parseExamAnswersInput
+  getExamQuestions
 } = require('./data.js');
 
 const PORT = process.env.PORT || 3000;
@@ -785,57 +782,34 @@ async function handleApi(req, res, url) {
   // 10. Get Exam Questions (Live Portal DB with HAR fallback)
   if (route === '/api/exam/questions' && (req.method === 'POST' || req.method === 'GET')) {
     const examId = String(body.exam_id || body.examId || url.searchParams.get('exam_id') || '125821');
-    const mode = String(body.mode || 'take');
     const userExams = getUserExams(username);
     const exam = userExams.find(e => String(e.examId) === examId);
     const fallbackQuestions = (typeof getExamQuestions === 'function')
       ? getExamQuestions(examId, exam?.subjectName)
       : DB.examQuestions;
 
-    let questions = user.username === 'DEMO123' ? fallbackQuestions : [];
-    let source = user.username === 'DEMO123' ? 'har' : 'blocked';
+    let questions = fallbackQuestions;
+    let source = 'har';
     let liveMessage = '';
     let remainingTime = (exam && exam.durationMinutes ? exam.durationMinutes : 30) * 60;
-    let isAutoSaved = false;
-    let autoSavedAnswers = {};
 
     if (vmeduLive && typeof vmeduLive.getLiveExamQuestions === 'function' && user.username !== 'DEMO123') {
-      const liveCached = DB.liveQuestionsByUser[username] && DB.liveQuestionsByUser[username][examId];
-      if (mode === 'review' && exam?.completionStatus === '1') {
-        if (Array.isArray(liveCached) && liveCached.length) {
-          questions = liveCached;
-          source = 'live-cache';
-        } else {
-          questions = [];
-          source = 'completed';
-          liveMessage = 'Submitted on live portal. Question solutions are only shown if recorded during this session or if performance review is enabled.';
+      try {
+        const liveQ = await vmeduLive.getLiveExamQuestions(user, examId);
+        if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
+          const keyMap = new Map(fallbackQuestions.map(fq => [String(fq.qid), fq.correctAnswerId]));
+          questions = liveQ.questions.map(q => ({
+            ...q,
+            correctAnswerId: keyMap.get(String(q.qid)) || q.correctAnswerId || null
+          }));
+          DB.liveQuestionsByUser[username] = DB.liveQuestionsByUser[username] || {};
+          DB.liveQuestionsByUser[username][examId] = questions;
+          remainingTime = liveQ.remainingTime || remainingTime;
+          source = 'live';
+        } else if (liveQ && liveQ.message) {
+          liveMessage = liveQ.message;
         }
-      } else {
-        try {
-          const liveQ = await vmeduLive.getLiveExamQuestions(user, examId);
-          if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
-            const keyMap = new Map(fallbackQuestions.map(fq => [String(fq.qid), fq.correctAnswerId]));
-            questions = liveQ.questions.map(q => ({
-              ...q,
-              correctAnswerId: keyMap.get(String(q.qid)) || q.correctAnswerId || null
-            }));
-            DB.liveQuestionsByUser[username] = DB.liveQuestionsByUser[username] || {};
-            DB.liveQuestionsByUser[username][examId] = questions;
-            if (liveQ.remainingTime !== null && liveQ.remainingTime !== undefined) {
-              remainingTime = liveQ.remainingTime;
-            }
-            isAutoSaved = Boolean(liveQ.isAutoSaved);
-            autoSavedAnswers = liveQ.autoSavedAnswers || {};
-            source = 'live';
-          } else if (liveQ && liveQ.message) {
-            liveMessage = liveQ.message;
-          } else {
-            liveMessage = 'Unable to fetch live examination questions from portal.';
-          }
-        } catch {
-          liveMessage = 'Failed to reach portal.vmedulife.com for exam questions.';
-        }
-      }
+      } catch {}
     }
 
     return send(res, 200, {
@@ -845,11 +819,6 @@ async function handleApi(req, res, url) {
       subjectName: exam ? exam.subjectName : 'DATA STRUCTURE',
       durationMinutes: exam && exam.durationMinutes ? exam.durationMinutes : 30,
       remainingTime,
-      isAutoSaved,
-      autoSavedAnswers,
-      strictMode: exam ? exam.strictMode || 'off' : 'off',
-      allowStartExam: Boolean(exam && exam.allowStartExam),
-      studentExamStartTime: exam ? exam.studentExamStartTime || '' : '',
       totalQuestions: questions.length,
       source,
       liveMessage,
@@ -871,27 +840,9 @@ async function handleApi(req, res, url) {
     let upstream_status = 'simulated';
     if (vmeduLive && typeof vmeduLive.startLiveExam === 'function' && user.username !== 'DEMO123') {
       const up = await vmeduLive.startLiveExam(user, examId);
-      if (up && up.ok) {
-        upstream_status = 'success';
-        const userExams = getUserExams(username);
-        const exam = userExams.find(e => String(e.examId) === examId);
-        if (exam && (!exam.studentExamStartTime || exam.studentExamStartTime === '0000-00-00 00:00:00')) {
-          exam.studentExamStartTime = up.startTime || formatIstDateTime();
-        }
-      } else {
-        const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Main portal refused to start exam.';
-        return send(res, 400, {
-          ok: false,
-          success: 'false',
-          status: 'fail',
-          detail: errMsg,
-          message: errMsg,
-          upstream_status: 'failed'
-        });
-      }
+      if (up && up.ok) upstream_status = 'success';
     }
     return send(res, 200, {
-      ok: true,
       data: [],
       success: 'true',
       status: 'success',
@@ -904,21 +855,27 @@ async function handleApi(req, res, url) {
   if (route === '/api/exam/submit' && req.method === 'POST') {
     const examId = String(body.exam_id || body.examId || '125821');
     const submissionType = body.submission_type || 'submit';
-    const parsedRem = parseRemainingSeconds(body.remainingTime);
-    const remainingTime = parsedRem !== null ? parsedRem : 0;
+    const remainingTime = Number(body.remainingTime) || 1660;
 
-    const answers = parseExamAnswersInput(body);
+    // Parse answers map: can be { qid: aid } or JSON array performance [{ q: qid, a: [aid] }]
+    let answers = Object.assign({}, body.answers || {});
+    if (typeof body.performance === 'string') {
+      try {
+        const perf = JSON.parse(body.performance);
+        if (Array.isArray(perf)) {
+          perf.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+        }
+      } catch {}
+    } else if (Array.isArray(body.performance)) {
+      body.performance.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+    }
+
     const userExams = getUserExams(username);
     const exam = userExams.find(e => String(e.examId) === examId);
     const liveCached = DB.liveQuestionsByUser[username] && DB.liveQuestionsByUser[username][examId];
-    const questions = liveCached || (user.username === 'DEMO123'
-      ? (typeof getExamQuestions === 'function' ? getExamQuestions(examId, exam?.subjectName) : DB.examQuestions)
-      : []);
-
-    const clientQids = Array.isArray(body.question_ids) ? body.question_ids.map(String) : [];
-    const allQuestionIds = questions.length ? questions.map(q => String(q.qid)) : clientQids;
-    const questionTypesByQid = Object.assign({}, body.question_types || {});
-    questions.forEach(q => { questionTypesByQid[String(q.qid)] = q.type; });
+    const questions = liveCached || ((typeof getExamQuestions === 'function')
+      ? getExamQuestions(examId, exam?.subjectName)
+      : DB.examQuestions);
 
     const hasMatchingQids = Object.keys(answers).length === 0 || questions.some(q => Object.prototype.hasOwnProperty.call(answers, q.qid));
     const hasAnswerKey = hasMatchingQids && questions.length > 0 && questions.every(q => Boolean(q.correctAnswerId));
@@ -945,7 +902,7 @@ async function handleApi(req, res, url) {
 
     let upstream_status = 'simulated';
     if (vmeduLive && typeof vmeduLive.submitLiveExam === 'function' && user.username !== 'DEMO123') {
-      const up = await vmeduLive.submitLiveExam(user, examId, answers, remainingTime, submissionType, allQuestionIds, questionTypesByQid);
+      const up = await vmeduLive.submitLiveExam(user, examId, answers, remainingTime, submissionType);
       if (up && up.ok) {
         upstream_status = 'success';
         if (submissionType !== 'auto-save' && typeof vmeduLive.getLiveStudentExams === 'function') {
@@ -956,16 +913,12 @@ async function handleApi(req, res, url) {
             }
           } catch {}
         }
-      } else {
-        const isAutoSave = submissionType === 'auto-save' || submissionType === 'Auto-save';
-        const errMsg = (up && up.data && up.data.message) || (up && up.error) || (isAutoSave
-          ? 'Main portal rejected auto-save checkpoint.'
-          : 'Exam submission rejected by main portal (validity expired or blocked by faculty).');
+      } else if (submissionType === 'submit') {
+        const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Exam submission rejected by main portal (validity expired or blocked by faculty).';
         return send(res, 400, {
           ok: false,
           success: false,
           status: 'fail',
-          submissionType,
           detail: errMsg,
           message: errMsg,
           upstream_status: 'failed'
@@ -985,7 +938,6 @@ async function handleApi(req, res, url) {
     }
 
     return send(res, 200, {
-      ok: true,
       success: true,
       status: 'success',
       message: submissionType === 'submit' ? 'Exam submitted successfully.' : 'Exam progress saved.',

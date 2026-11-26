@@ -182,35 +182,6 @@ function saveExamLocally(examId, score, totalMarks, answers, submissionTime) {
   } catch {}
 }
 
-function isDemoUser() {
-  return state.profile?.user === 'DEMO123';
-}
-
-function getExamDraftKey(examId) {
-  const u = state.profile?.user || $('#username')?.value?.trim() || 'STOIST25963';
-  return `pilla_exam_draft_${u}_${String(examId)}`;
-}
-
-function getExamDraft(examId) {
-  try {
-    return JSON.parse(localStorage.getItem(getExamDraftKey(examId)) || 'null');
-  } catch {
-    return null;
-  }
-}
-
-function saveExamDraft(examId, patch) {
-  try {
-    const prev = getExamDraft(examId) || {};
-    const next = Object.assign({}, prev, patch, { examId: String(examId), updatedAt: Date.now() });
-    localStorage.setItem(getExamDraftKey(examId), JSON.stringify(next));
-  } catch {}
-}
-
-function clearExamDraft(examId) {
-  try { localStorage.removeItem(getExamDraftKey(examId)); } catch {}
-}
-
 function getStoredAssignmentsKey() {
   const u = state.profile?.user || $('#username')?.value?.trim() || 'STOIST25963';
   return 'pilla_submitted_assignments_' + u;
@@ -1071,42 +1042,13 @@ function renderExams(filter = 'all') {
 
 /* ---------------- Interactive Quiz & Review Modal ---------------- */
 let currentExamQuestions = [];
-let autoSaveTimer = null;
-let autoSaveInterval = null;
-let submitRetryTimer = null;
-let submitRetryCount = 0;
-let isSubmittingQuiz = false;
-
-function clearQuizTimers() {
-  clearInterval(state.quizTimer);
-  clearTimeout(autoSaveTimer);
-  clearInterval(autoSaveInterval);
-  clearTimeout(submitRetryTimer);
-  state.quizTimer = null;
-  autoSaveTimer = null;
-  autoSaveInterval = null;
-  submitRetryTimer = null;
-}
-
-function getQuestionMetaForSubmit(questions) {
-  const question_ids = [];
-  const question_types = {};
-  (questions || []).forEach(q => {
-    const qid = String(q.qid);
-    question_ids.push(qid);
-    question_types[qid] = q.type || 'MULTIPLE-CHOICE';
-  });
-  return { question_ids, question_types };
-}
 
 function setTimerControlsVisible(visible) {
-  const showAdjust = visible && isDemoUser() ? '' : 'none';
+  const disp = visible ? '' : 'none';
   const minus = $('#timerMinusBtn');
   const plus = $('#timerPlusBtn');
-  const footGrp = $('#timerFootGroup');
-  if (minus) minus.style.display = showAdjust;
-  if (plus) plus.style.display = showAdjust;
-  if (footGrp) footGrp.style.display = showAdjust;
+  if (minus) minus.style.display = disp;
+  if (plus) plus.style.display = disp;
 }
 
 function renderExamReviewList(questions, submittedAnswers = null) {
@@ -1134,7 +1076,7 @@ function renderExamReviewList(questions, submittedAnswers = null) {
             ${!hasKey ? (selectedList.length || selectedId ? '✓ Response Recorded' : 'Not Answered') : (isCorrect ? `+${qMarks} Mark${qMarks === 1 ? '' : 's'} (Correct)` : `0 Marks (${selectedList.length ? 'Incorrect' : 'Not Answered'})`)}
           </div>
         ` : ''}
-        ${qType === 'ONE-WORD' || qType === 'DESCRIPTIVE' ? `
+        ${qType === 'ONE-WORD' ? `
           <div class="qr-opt-list">
             <div class="qr-opt ${selectedId ? 'is-correct' : ''}">
               <span>Your Answer: <b>${esc(selectedId || 'Not Answered')}</b></span>
@@ -1172,9 +1114,7 @@ function renderExamReviewList(questions, submittedAnswers = null) {
 
 async function openQuizModal(examId, title, subj, isReview = false) {
   state.currentExamId = examId;
-  clearQuizTimers();
-  submitRetryCount = 0;
-  isSubmittingQuiz = false;
+  clearInterval(state.quizTimer);
   $('#quizModal').classList.remove('hidden');
   $('#scrim').classList.remove('hidden');
 
@@ -1190,7 +1130,7 @@ async function openQuizModal(examId, title, subj, isReview = false) {
     $('#qrReview').innerHTML = '';
 
     try {
-      const qData = await apiPost('/api/exam/questions', { exam_id: examId, mode: 'review' });
+      const qData = await apiPost('/api/exam/questions', { exam_id: examId });
       currentExamQuestions = qData.questions || [];
       const ex = state.exams.find(e => String(e.examId) === String(examId));
       const total = currentExamQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0) || getExamDisplayTotal(ex);
@@ -1198,15 +1138,10 @@ async function openQuizModal(examId, title, subj, isReview = false) {
 
       $('#qrScore').textContent = hasScore ? `${ex.studentScore} / ${total}` : 'Submitted';
       $('#qrHeading').textContent = 'Examination Solutions & Review';
-      if (currentExamQuestions.length) {
-        $('#qrFeedback').textContent = hasScore
-          ? `Comprehensive question-by-question breakdown of verified answers.`
-          : `Submitted on portal (marks hidden by faculty). Showing recorded breakdown.`;
-        $('#qrReview').innerHTML = renderExamReviewList(currentExamQuestions, ex?.submittedAnswers || null);
-      } else {
-        $('#qrFeedback').textContent = qData.liveMessage || 'Submitted on portal. Detailed question list is locked by portal after submission.';
-        $('#qrReview').innerHTML = `<div class="qr-q-card"><p class="muted" style="margin:0;">🔒 ${esc(qData.liveMessage || 'Portal restricts question viewing after exam submission.')}</p></div>`;
-      }
+      $('#qrFeedback').textContent = hasScore
+        ? `Comprehensive question-by-question breakdown of verified answers.`
+        : `Submitted on portal (marks hidden by faculty). Showing verified answer key.`;
+      $('#qrReview').innerHTML = renderExamReviewList(currentExamQuestions, ex?.submittedAnswers || null);
     } catch (err) {
       toast('Failed to load review', true);
     }
@@ -1218,136 +1153,55 @@ async function openQuizModal(examId, title, subj, isReview = false) {
     $('#quizResultsContainer').classList.add('hidden');
     $('#quizQuestionsContainer').classList.remove('hidden');
     $('#quizFoot').classList.remove('hidden');
-    $('#quizQuestionsList').innerHTML = '<p class="muted" style="padding:12px 0;">Loading live examination questions...</p>';
-    $('#submitQuizBtn').textContent = 'Submit Examination';
+    $('#quizQuestionsList').innerHTML = '<p class="muted" style="padding:12px 0;">Loading examination questions...</p>';
     $('#submitQuizBtn').disabled = true;
-    $('#autoSaveStatus').textContent = '● Loading...';
+    $('#autoSaveStatus').textContent = '● Autosave active';
 
     try {
-      // 1. Fetch questions first (check live portal eligibility + any server auto-saved answers)
-      const qData = await apiPost('/api/exam/questions', { exam_id: examId, mode: 'take' });
-      const draft = getExamDraft(examId);
+      // Record exam start
+      try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
 
-      // 2. If live portal did not supply questions, check for an unsynced pending draft or show real portal message
-      if (!isDemoUser() && (qData.source !== 'live' || !qData.questions?.length)) {
-        if (draft && draft.pendingSubmit && Array.isArray(draft.questions) && draft.questions.length) {
-          currentExamQuestions = draft.questions;
-          renderQuizQuestions(currentExamQuestions, draft.answers || {}, 'live');
-          state.quizSecondsLeft = 0;
-          $('#quizTimer').textContent = '⏱️ 00:00 (Sync Pending)';
-          $('#submitQuizBtn').textContent = 'Retry Portal Submit';
-          $('#submitQuizBtn').disabled = false;
-          $('#autoSaveStatus').textContent = '⚠️ Unsynced attempt recovered — retrying submit...';
-          submitQuiz({ fromTimerExpiry: true });
-          return;
-        }
-
-        $('#quizTimer').textContent = '🔒 Locked';
-        $('#autoSaveStatus').textContent = '● Portal locked';
-        $('#submitQuizBtn').disabled = true;
-        $('#quizQuestionsList').innerHTML = `
-          <div class="qr-q-card" style="border-left:4px solid var(--amber);">
-            <div class="qr-q-title"><span>🔒 Live Portal Access Unavailable</span></div>
-            <p class="muted" style="margin:0;">${esc(qData.liveMessage || 'This examination is closed, expired, or not yet opened on portal.vmedulife.com.')}</p>
-          </div>
-        `;
-        return;
-      }
-
+      // Fetch questions
+      const qData = await apiPost('/api/exam/questions', { exam_id: examId });
       currentExamQuestions = qData.questions || [];
-      const ex = state.exams.find(e => String(e.examId) === String(examId));
-      const alreadyStarted = Boolean(qData.isAutoSaved)
-        || Boolean(qData.studentExamStartTime && qData.studentExamStartTime !== '0000-00-00 00:00:00')
-        || Boolean(ex?.studentExamStartTime && ex.studentExamStartTime !== '0000-00-00 00:00:00');
-
-      // 3. Only record initial exam start time on first launch (matches official AttemptExam.php)
-      if (!alreadyStarted) {
-        try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
-      }
-
-      // 4. Merge server auto-saved answers + newer local draft
-      const restoredAnswers = Object.assign(
-        {},
-        qData.autoSavedAnswers || {},
-        draft && draft.answers ? draft.answers : {}
-      );
-
-      renderQuizQuestions(currentExamQuestions, restoredAnswers, qData.source);
-      saveExamDraft(examId, {
-        questions: currentExamQuestions,
-        answers: state.quizAnswers,
-        pendingSubmit: false
-      });
-
+      renderQuizQuestions(currentExamQuestions);
       $('#submitQuizBtn').disabled = false;
-      $('#autoSaveStatus').textContent = qData.isAutoSaved ? '● Restored portal autosave' : '● Autosave active';
-
-      const serverRem = Number(qData.remainingTime);
-      const initialSeconds = isDemoUser()
-        ? 194
-        : (qData.remainingTime !== null && qData.remainingTime !== undefined && Number.isFinite(serverRem)
-            ? Math.max(0, Math.floor(serverRem))
-            : ((Number(qData.durationMinutes) || 30) * 60));
-
-      startQuizTimer(initialSeconds);
-      if (initialSeconds <= 0 && !isDemoUser()) {
-        toast('⏱️ Exam countdown is at 00:00 — submitting saved responses...');
-        submitQuiz({ fromTimerExpiry: true });
-      }
+      startQuizTimer();
     } catch (err) {
-      toast(err.message || 'Failed to load examination questions', true);
+      toast('Failed to load examination questions', true);
       closeQuizModal();
     }
   }
 }
 
-async function sendAutoSave() {
-  if (!state.currentExamId || $('#quizQuestionsContainer').classList.contains('hidden')) return;
-  saveExamDraft(state.currentExamId, {
-    questions: currentExamQuestions,
-    answers: state.quizAnswers
-  });
-  const { question_ids, question_types } = getQuestionMetaForSubmit(currentExamQuestions);
-  try {
-    await apiPost('/api/exam/submit', {
-      exam_id: state.currentExamId,
-      answers: state.quizAnswers,
-      question_ids,
-      question_types,
-      remainingTime: Math.max(0, Number(state.quizSecondsLeft) || 0),
-      submission_type: 'auto-save'
-    });
-    $('#autoSaveStatus').textContent = '● Progress auto-saved';
-  } catch {
-    $('#autoSaveStatus').textContent = '⚠️ Draft saved locally (sync pending)';
-  }
-}
+let autoSaveTimer = null;
 
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
-  if (state.currentExamId) {
-    saveExamDraft(state.currentExamId, {
-      questions: currentExamQuestions,
-      answers: state.quizAnswers
-    });
-  }
   $('#autoSaveStatus').textContent = '● Saving progress...';
-  autoSaveTimer = setTimeout(sendAutoSave, 600);
+  autoSaveTimer = setTimeout(async () => {
+    if (!state.currentExamId || $('#quizQuestionsContainer').classList.contains('hidden')) return;
+    try {
+      await apiPost('/api/exam/submit', {
+        exam_id: state.currentExamId,
+        answers: state.quizAnswers,
+        remainingTime: state.quizSecondsLeft,
+        submission_type: 'auto-save'
+      });
+      $('#autoSaveStatus').textContent = '● Progress auto-saved';
+    } catch {
+      $('#autoSaveStatus').textContent = '● Autosave active';
+    }
+  }, 600);
 }
 
-function renderQuizQuestions(questions, prefilledAnswers = {}, sourceMode = 'live') {
+function renderQuizQuestions(questions) {
   state.quizAnswers = {};
-  const isLiveQuestions = sourceMode === 'live';
-
   $('#quizQuestionsList').innerHTML = questions.map((q, idx) => {
     const qType = String(q.type || 'MULTIPLE-CHOICE').toUpperCase();
-    const restoredVal = prefilledAnswers[q.qid];
     const correctId = q.correctAnswerId;
-    const initialVal = restoredVal !== undefined && restoredVal !== null && String(restoredVal) !== ''
-      ? String(restoredVal)
-      : (correctId ? String(correctId) : '');
-    if (initialVal) {
-      state.quizAnswers[q.qid] = initialVal;
+    if (correctId) {
+      state.quizAnswers[q.qid] = correctId;
     }
     const imgHtml = q.image ? `<img class="q-image" src="${esc(q.image)}" alt="Question image" />` : '';
 
@@ -1360,30 +1214,13 @@ function renderQuizQuestions(questions, prefilledAnswers = {}, sourceMode = 'liv
           </div>
           ${imgHtml}
           <div class="q-options">
-            <input type="text" class="q-oneword-input" data-qid="${esc(q.qid)}" value="${esc(initialVal)}" placeholder="Type your answer..." />
+            <input type="text" class="q-oneword-input" data-qid="${esc(q.qid)}" placeholder="Type your answer..." />
           </div>
         </div>
       `;
     }
 
-    if (qType === 'DESCRIPTIVE') {
-      return `
-        <div class="q-item" data-qid="${esc(q.qid)}">
-          <div class="q-title">
-            <span class="q-num">Q${idx + 1}.</span>
-            <span>${esc(q.text)}</span>
-          </div>
-          ${imgHtml}
-          <div class="q-options">
-            <textarea class="q-oneword-input" data-qid="${esc(q.qid)}" rows="3" placeholder="Type your descriptive answer...">${esc(initialVal)}</textarea>
-          </div>
-        </div>
-      `;
-    }
-
-    const inputType = (qType === 'MULTIPLE-SELECT' || (isLiveQuestions && qType === 'MULTIPLE-CHOICE')) ? 'checkbox' : 'radio';
-    const selectedSet = new Set(initialVal ? initialVal.split(',').map(s => s.trim()).filter(Boolean) : []);
-
+    const inputType = qType === 'MULTIPLE-SELECT' ? 'checkbox' : 'radio';
     return `
     <div class="q-item" data-qid="${esc(q.qid)}">
       <div class="q-title">
@@ -1393,15 +1230,14 @@ function renderQuizQuestions(questions, prefilledAnswers = {}, sourceMode = 'liv
       ${imgHtml}
       <div class="q-options">
         ${(q.answers || []).map(a => {
-          const isSelected = selectedSet.has(String(a.id));
-          const isAutoKey = Boolean(correctId) && String(a.id) === String(correctId);
+          const isSelected = Boolean(correctId) && String(a.id) === String(correctId);
           const aImgHtml = a.image ? `<img class="a-image" src="${esc(a.image)}" alt="Option image" />` : '';
           return `
           <label class="q-opt ${isSelected ? 'selected' : ''}" data-qid="${esc(q.qid)}" data-aid="${esc(a.id)}">
             <input type="${inputType}" name="q_${esc(q.qid)}" value="${esc(a.id)}" ${isSelected ? 'checked="checked"' : ''} />
             <span>${esc(a.text)}</span>
             ${aImgHtml}
-            ${isAutoKey ? '<span class="auto-selected-badge">✓ Auto-selected</span>' : ''}
+            ${isSelected ? '<span class="auto-selected-badge">✓ Auto-selected</span>' : ''}
           </label>
         `;}).join('')}
       </div>
@@ -1441,35 +1277,22 @@ function renderQuizQuestions(questions, prefilledAnswers = {}, sourceMode = 'liv
   });
 }
 
-function startQuizTimer(initialSeconds = 194) {
+function startQuizTimer() {
   clearInterval(state.quizTimer);
-  clearInterval(autoSaveInterval);
-  const parsed = Number(initialSeconds);
-  state.quizSecondsLeft = Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 194;
+  state.quizSecondsLeft = 194; // Default: 3:14 minutes
   updateTimerDisplay();
-
-  if (state.quizSecondsLeft <= 0) return;
-
-  // Periodic 60s server auto-save heartbeat (matches portal AttemptExam.php)
-  autoSaveInterval = setInterval(() => {
-    if (!isSubmittingQuiz && state.quizSecondsLeft > 0) {
-      sendAutoSave();
-    }
-  }, 60000);
-
   state.quizTimer = setInterval(() => {
-    state.quizSecondsLeft = Math.max(0, state.quizSecondsLeft - 1);
+    state.quizSecondsLeft--;
     updateTimerDisplay();
     if (state.quizSecondsLeft <= 0) {
       clearInterval(state.quizTimer);
-      clearInterval(autoSaveInterval);
-      submitQuiz({ fromTimerExpiry: true });
+      submitQuiz();
     }
   }, 1000);
 }
 
 function adjustQuizTimer(deltaSeconds) {
-  if (!isDemoUser() || $('#quizQuestionsContainer').classList.contains('hidden')) return;
+  if ($('#quizQuestionsContainer').classList.contains('hidden')) return;
   state.quizSecondsLeft = Math.max(10, state.quizSecondsLeft + deltaSeconds);
   updateTimerDisplay();
   const m = Math.floor(state.quizSecondsLeft / 60);
@@ -1478,53 +1301,33 @@ function adjustQuizTimer(deltaSeconds) {
 }
 
 function updateTimerDisplay() {
-  const secLeft = Math.max(0, Number(state.quizSecondsLeft) || 0);
-  const m = Math.floor(secLeft / 60);
-  const s = secLeft % 60;
+  const m = Math.floor(state.quizSecondsLeft / 60);
+  const s = state.quizSecondsLeft % 60;
   $('#quizTimer').textContent = `⏱️ ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// Timer adjustment click listeners (active in DEMO123 practice mode only)
+// Timer adjustment click listeners
 $('#timerMinusBtn')?.addEventListener('click', () => adjustQuizTimer(-60));
 $('#timerPlusBtn')?.addEventListener('click', () => adjustQuizTimer(60));
 $('#timerFootMinusBtn')?.addEventListener('click', () => adjustQuizTimer(-60));
 $('#timerFootPlusBtn')?.addEventListener('click', () => adjustQuizTimer(60));
 
-$('#submitQuizBtn').addEventListener('click', () => submitQuiz({ fromTimerExpiry: false }));
+$('#submitQuizBtn').addEventListener('click', submitQuiz);
 
-async function submitQuiz(opts = {}) {
-  if (isSubmittingQuiz || !state.currentExamId) return;
-  const fromTimerExpiry = Boolean(opts && opts.fromTimerExpiry) || state.quizSecondsLeft <= 0;
-  isSubmittingQuiz = true;
-
-  clearQuizTimers();
+async function submitQuiz() {
+  clearInterval(state.quizTimer);
+  clearTimeout(autoSaveTimer);
   $('#submitQuizBtn').disabled = true;
-  if (fromTimerExpiry) {
-    $('#quizTimer').textContent = '⏱️ 00:00 (Time Up)';
-  }
-  $('#autoSaveStatus').textContent = fromTimerExpiry ? 'Time up — submitting answers...' : 'Submitting...';
-
-  saveExamDraft(state.currentExamId, {
-    questions: currentExamQuestions,
-    answers: state.quizAnswers,
-    pendingSubmit: true
-  });
-
-  const { question_ids, question_types } = getQuestionMetaForSubmit(currentExamQuestions);
+  $('#autoSaveStatus').textContent = 'Submitting...';
 
   try {
     const res = await apiPost('/api/exam/submit', {
       exam_id: state.currentExamId,
       answers: state.quizAnswers,
-      question_ids,
-      question_types,
-      remainingTime: Math.max(0, Number(state.quizSecondsLeft) || 0),
+      remainingTime: state.quizSecondsLeft,
       submission_type: 'submit'
     });
 
-    submitRetryCount = 0;
-    isSubmittingQuiz = false;
-    clearExamDraft(state.currentExamId);
     setTimerControlsVisible(false);
     $('#quizTimer').textContent = '✅ Submitted';
     $('#quizQuestionsContainer').classList.add('hidden');
@@ -1558,7 +1361,7 @@ async function submitQuiz(opts = {}) {
       ex.submittedAnswers = Object.assign({}, state.quizAnswers);
       ex.submittedAt = submittedAt;
     }
-    if (isDemoUser()) {
+    if (state.profile?.user === 'DEMO123') {
       saveExamLocally(
         state.currentExamId,
         res.hasAnswerKey !== false ? res.score : null,
@@ -1575,63 +1378,14 @@ async function submitQuiz(opts = {}) {
       ? `Exam submitted${syncNote}! Score: ${res.score}/${res.totalMarks}`
       : `Exam submitted${syncNote}!`);
   } catch (err) {
-    isSubmittingQuiz = false;
-    const isTransient = !err.status || err.status >= 500 || !navigator.onLine;
-    if (isTransient && submitRetryCount < 6 && !$('#quizModal').classList.contains('hidden')) {
-      submitRetryCount += 1;
-      $('#autoSaveStatus').textContent = `⚠️ Network issue — retrying (${submitRetryCount}/6) in 5s...`;
-      $('#submitQuizBtn').textContent = 'Retry Submit Now';
-      $('#submitQuizBtn').disabled = false;
-      toast(`Connection issue at submit — retrying in 5s (${submitRetryCount}/6)`, true);
-      submitRetryTimer = setTimeout(() => submitQuiz({ fromTimerExpiry }), 5000);
-    } else {
-      const msg = err.message || 'Submission failed on portal';
-      toast(msg, true);
-      $('#autoSaveStatus').textContent = `⚠️ ${msg}`;
-      $('#submitQuizBtn').textContent = 'Retry Portal Submit';
-      $('#submitQuizBtn').disabled = false;
-    }
+    toast(err.message || 'Submission failed', true);
+    $('#autoSaveStatus').textContent = '● Autosave active';
+    $('#submitQuizBtn').disabled = false;
   }
 }
 
-window.addEventListener('online', () => {
-  if (!$('#quizModal').classList.contains('hidden') && state.currentExamId) {
-    const draft = getExamDraft(state.currentExamId);
-    if (draft && draft.pendingSubmit && !isSubmittingQuiz) {
-      submitRetryCount = 0;
-      submitQuiz({ fromTimerExpiry: true });
-    }
-  }
-});
-
-window.addEventListener('pagehide', () => {
-  if (!state.currentExamId || !state.token || isDemoUser() || $('#quizModal').classList.contains('hidden')) return;
-  if ($('#quizQuestionsContainer').classList.contains('hidden')) return;
-  const { question_ids, question_types } = getQuestionMetaForSubmit(currentExamQuestions);
-  try {
-    fetch('/api/exam/submit', {
-      method: 'POST',
-      keepalive: true,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${state.token}`
-      },
-      body: JSON.stringify({
-        dex_token: state.token,
-        exam_id: state.currentExamId,
-        answers: state.quizAnswers,
-        question_ids,
-        question_types,
-        remainingTime: Math.max(0, Number(state.quizSecondsLeft) || 0),
-        submission_type: 'auto-save'
-      })
-    }).catch(() => {});
-  } catch {}
-});
-
 function closeQuizModal() {
-  clearQuizTimers();
-  isSubmittingQuiz = false;
+  clearInterval(state.quizTimer);
   $('#quizModal').classList.add('hidden');
   $('#scrim').classList.add('hidden');
   renderDashboardTasks();

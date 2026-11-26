@@ -15,12 +15,7 @@ const {
   NOTIFICATIONS,
   ASSIGNMENTS,
   NAVIGATION_MODULES,
-  getExamQuestions,
-  parseRemainingSeconds,
-  formatIstDateTime,
-  parseAutoSavedSelection,
-  buildExamPerformanceArray,
-  parseExamAnswersInput
+  getExamQuestions
 } = data;
 
 const JWT_SECRET = 'local-demo-secret-not-for-production-pilla';
@@ -725,9 +720,6 @@ function mapPortalExam(e) {
     viewStudentMarksAllowed: marksAllowed,
     viewStudentPerformanceAllowed: e.viewStudentPerformanceAllowed || 'off',
     allowStartExam: Boolean(e.allowStartExam),
-    strictMode: e.strictMode || 'off',
-    examAccessStatus: e.examAccessStatus || '',
-    negativeMarking: Number(e.negativeMarking) || 0,
     startExamLink: e.startExamLink || '',
     studentExamStartTime: e.studentExamStartTime || '',
     submittedAtFormatted: e.studentExamSubmissionTimeFormatted || '',
@@ -818,8 +810,6 @@ async function getLiveExamQuestions(user, examId) {
     if (!order.length) {
       return { questions: null, message: json.message || 'No live questions returned', liveStatus: 'fallback' };
     }
-    const isAutoSaved = json.isAutoSaved === 'true';
-    const autoSavedAnswers = isAutoSaved ? parseAutoSavedSelection(json.userSelection) : {};
     return {
       questions: order.map(qid => {
         const q = json.data[qid];
@@ -837,11 +827,9 @@ async function getLiveExamQuestions(user, examId) {
           correctAnswerId: null
         };
       }),
-      remainingTime: parseRemainingSeconds(json.remainingTime),
-      isAutoSaved,
-      autoSavedAnswers,
+      remainingTime: Number(json.remainingTime) || 1800,
+      isAutoSaved: json.isAutoSaved === 'true',
       configuration: json.configuration || {},
-      currentServerDatetime: json.currentServerDatetime || '',
       liveStatus: 'live'
     };
   } catch {
@@ -852,7 +840,9 @@ async function getLiveExamQuestions(user, examId) {
 async function startLiveExam(user, examId) {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
-    const startTime = formatIstDateTime();
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const startTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
     const json = await postOnlineExamApi(user, 'updateStudentOnlineExamStartTime', {
       studentId: Number(user.stuid),
       examId: Number(examId),
@@ -860,31 +850,35 @@ async function startLiveExam(user, examId) {
       source: 'WEB'
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
-    return { ok, upstream_status: ok ? 'success' : 'failed', startTime, data: json, error: json && json.message };
-  } catch (err) {
-    return { ok: false, upstream_status: 'failed', error: err.message };
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
   }
 }
 
-async function submitLiveExam(user, examId, answers, remainingTime = 0, submissionType = 'submit', allQuestionIds = [], questionTypesByQid = {}) {
+async function submitLiveExam(user, examId, answers, remainingTime = 194, submissionType = 'submit') {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
-    const perfArr = buildExamPerformanceArray(answers, allQuestionIds, questionTypesByQid);
+    const perfArr = Object.entries(answers || {}).map(([q, a]) => {
+      const aArr = Array.isArray(a)
+        ? a.map(String)
+        : String(a ?? '').split(',').map(s => s.trim()).filter(Boolean);
+      return { q: String(q), a: aArr.length ? aArr : [''] };
+    });
     const subType = submissionType === 'auto-save' || submissionType === 'Auto-save' ? 'Auto-save' : 'submit';
-    const safeRemaining = parseRemainingSeconds(remainingTime);
     const json = await postOnlineExamApi(user, 'submitOnlineExam', {
       studentId: Number(user.stuid),
       examId: Number(examId),
       performance: JSON.stringify(perfArr),
       score: 0,
-      remainingTime: safeRemaining !== null ? safeRemaining : 0,
+      remainingTime: Number(remainingTime) || 194,
       iid: 987,
       submissionType: subType
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
-    return { ok, upstream_status: ok ? 'success' : 'failed', data: json, error: json && json.message };
-  } catch (err) {
-    return { ok: false, upstream_status: 'failed', error: err.message };
+    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
+  } catch {
+    return { ok: false, upstream_status: 'simulated' };
   }
 }
 
@@ -1502,57 +1496,34 @@ export default {
 
       if (route === '/api/exam/questions') {
         const examId = String(body.exam_id || body.examId || url.searchParams.get('exam_id') || '125821');
-        const mode = String(body.mode || 'take');
         const userExams = getUserExams(username);
         const exam = userExams.find(e => String(e.examId) === examId);
         const fallbackQuestions = (typeof getExamQuestions === 'function')
           ? getExamQuestions(examId, exam?.subjectName)
           : DB.examQuestions;
 
-        let questions = user.username === 'DEMO123' ? fallbackQuestions : [];
-        let source = user.username === 'DEMO123' ? 'har' : 'blocked';
+        let questions = fallbackQuestions;
+        let source = 'har';
         let liveMessage = '';
         let remainingTime = (exam && exam.durationMinutes ? exam.durationMinutes : 30) * 60;
-        let isAutoSaved = false;
-        let autoSavedAnswers = {};
 
         if (user.username !== 'DEMO123') {
-          const liveCached = DB.liveQuestionsByUser[username] && DB.liveQuestionsByUser[username][examId];
-          if (mode === 'review' && exam?.completionStatus === '1') {
-            if (Array.isArray(liveCached) && liveCached.length) {
-              questions = liveCached;
-              source = 'live-cache';
-            } else {
-              questions = [];
-              source = 'completed';
-              liveMessage = 'Submitted on live portal. Question solutions are only shown if recorded during this session or if performance review is enabled.';
+          try {
+            const liveQ = await getLiveExamQuestions(user, examId);
+            if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
+              const keyMap = new Map(fallbackQuestions.map(fq => [String(fq.qid), fq.correctAnswerId]));
+              questions = liveQ.questions.map(q => ({
+                ...q,
+                correctAnswerId: keyMap.get(String(q.qid)) || q.correctAnswerId || null
+              }));
+              DB.liveQuestionsByUser[username] = DB.liveQuestionsByUser[username] || {};
+              DB.liveQuestionsByUser[username][examId] = questions;
+              remainingTime = liveQ.remainingTime || remainingTime;
+              source = 'live';
+            } else if (liveQ && liveQ.message) {
+              liveMessage = liveQ.message;
             }
-          } else {
-            try {
-              const liveQ = await getLiveExamQuestions(user, examId);
-              if (liveQ && Array.isArray(liveQ.questions) && liveQ.questions.length) {
-                const keyMap = new Map(fallbackQuestions.map(fq => [String(fq.qid), fq.correctAnswerId]));
-                questions = liveQ.questions.map(q => ({
-                  ...q,
-                  correctAnswerId: keyMap.get(String(q.qid)) || q.correctAnswerId || null
-                }));
-                DB.liveQuestionsByUser[username] = DB.liveQuestionsByUser[username] || {};
-                DB.liveQuestionsByUser[username][examId] = questions;
-                if (liveQ.remainingTime !== null && liveQ.remainingTime !== undefined) {
-                  remainingTime = liveQ.remainingTime;
-                }
-                isAutoSaved = Boolean(liveQ.isAutoSaved);
-                autoSavedAnswers = liveQ.autoSavedAnswers || {};
-                source = 'live';
-              } else if (liveQ && liveQ.message) {
-                liveMessage = liveQ.message;
-              } else {
-                liveMessage = 'Unable to fetch live examination questions from portal.';
-              }
-            } catch {
-              liveMessage = 'Failed to reach portal.vmedulife.com for exam questions.';
-            }
-          }
+          } catch {}
         }
 
         return jsonResponse({
@@ -1562,11 +1533,6 @@ export default {
           subjectName: exam ? exam.subjectName : 'DATA STRUCTURE',
           durationMinutes: exam && exam.durationMinutes ? exam.durationMinutes : 30,
           remainingTime,
-          isAutoSaved,
-          autoSavedAnswers,
-          strictMode: exam ? exam.strictMode || 'off' : 'off',
-          allowStartExam: Boolean(exam && exam.allowStartExam),
-          studentExamStartTime: exam ? exam.studentExamStartTime || '' : '',
           totalQuestions: questions.length,
           source,
           liveMessage,
@@ -1587,27 +1553,9 @@ export default {
         let upstream_status = 'simulated';
         if (user.username !== 'DEMO123') {
           const up = await startLiveExam(user, examId);
-          if (up && up.ok) {
-            upstream_status = 'success';
-            const userExams = getUserExams(username);
-            const exam = userExams.find(e => String(e.examId) === examId);
-            if (exam && (!exam.studentExamStartTime || exam.studentExamStartTime === '0000-00-00 00:00:00')) {
-              exam.studentExamStartTime = up.startTime || formatIstDateTime();
-            }
-          } else {
-            const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Main portal refused to start exam.';
-            return jsonResponse({
-              ok: false,
-              success: 'false',
-              status: 'fail',
-              detail: errMsg,
-              message: errMsg,
-              upstream_status: 'failed'
-            }, 400);
-          }
+          if (up && up.ok) upstream_status = 'success';
         }
         return jsonResponse({
-          ok: true,
           data: [],
           success: 'true',
           status: 'success',
@@ -1619,21 +1567,26 @@ export default {
       if (route === '/api/exam/submit' && request.method === 'POST') {
         const examId = String(body.exam_id || body.examId || '125821');
         const submissionType = body.submission_type || 'submit';
-        const parsedRem = parseRemainingSeconds(body.remainingTime);
-        const remainingTime = parsedRem !== null ? parsedRem : 0;
+        const remainingTime = Number(body.remainingTime) || 1660;
 
-        const answers = parseExamAnswersInput(body);
+        let answers = Object.assign({}, body.answers || {});
+        if (typeof body.performance === 'string') {
+          try {
+            const perf = JSON.parse(body.performance);
+            if (Array.isArray(perf)) {
+              perf.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+            }
+          } catch {}
+        } else if (Array.isArray(body.performance)) {
+          body.performance.forEach(item => { if (item.q && item.a && item.a[0]) answers[item.q] = item.a[0]; });
+        }
+
         const userExams = getUserExams(username);
         const exam = userExams.find(e => String(e.examId) === examId);
         const liveCached = DB.liveQuestionsByUser[username] && DB.liveQuestionsByUser[username][examId];
-        const questions = liveCached || (user.username === 'DEMO123'
-          ? (typeof getExamQuestions === 'function' ? getExamQuestions(examId, exam?.subjectName) : DB.examQuestions)
-          : []);
-
-        const clientQids = Array.isArray(body.question_ids) ? body.question_ids.map(String) : [];
-        const allQuestionIds = questions.length ? questions.map(q => String(q.qid)) : clientQids;
-        const questionTypesByQid = Object.assign({}, body.question_types || {});
-        questions.forEach(q => { questionTypesByQid[String(q.qid)] = q.type; });
+        const questions = liveCached || ((typeof getExamQuestions === 'function')
+          ? getExamQuestions(examId, exam?.subjectName)
+          : DB.examQuestions);
 
         const hasMatchingQids = Object.keys(answers).length === 0 || questions.some(q => Object.prototype.hasOwnProperty.call(answers, q.qid));
         const hasAnswerKey = hasMatchingQids && questions.length > 0 && questions.every(q => Boolean(q.correctAnswerId));
@@ -1660,7 +1613,7 @@ export default {
 
         let upstream_status = 'simulated';
         if (user.username !== 'DEMO123') {
-          const up = await submitLiveExam(user, examId, answers, remainingTime, submissionType, allQuestionIds, questionTypesByQid);
+          const up = await submitLiveExam(user, examId, answers, remainingTime, submissionType);
           if (up && up.ok) {
             upstream_status = 'success';
             if (submissionType !== 'auto-save') {
@@ -1671,16 +1624,12 @@ export default {
                 }
               } catch {}
             }
-          } else {
-            const isAutoSave = submissionType === 'auto-save' || submissionType === 'Auto-save';
-            const errMsg = (up && up.data && up.data.message) || (up && up.error) || (isAutoSave
-              ? 'Main portal rejected auto-save checkpoint.'
-              : 'Exam submission rejected by main portal (validity expired or blocked by faculty).');
+          } else if (submissionType === 'submit') {
+            const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Exam submission rejected by main portal (validity expired or blocked by faculty).';
             return jsonResponse({
               ok: false,
               success: false,
               status: 'fail',
-              submissionType,
               detail: errMsg,
               message: errMsg,
               upstream_status: 'failed'
@@ -1700,7 +1649,6 @@ export default {
         }
 
         return jsonResponse({
-          ok: true,
           success: true,
           status: 'success',
           message: submissionType === 'submit' ? 'Exam submitted successfully.' : 'Exam progress saved.',
