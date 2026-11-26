@@ -655,14 +655,7 @@ async function handleApi(req, res, url) {
       try {
         const liveAss = await vmeduLive.getLiveStudentAssignments(user);
         if (liveAss && Array.isArray(liveAss.assignments)) {
-          const prevMap = new Map((DB.assignmentsByUser[username] || []).map(a => [String(a.id), a]));
-          DB.assignmentsByUser[username] = liveAss.assignments.map(a => {
-            const prev = prevMap.get(String(a.id));
-            if (prev && prev.status === 'Completed' && a.status !== 'Completed' && prev._localSubmitted) {
-              return { ...a, ...prev, source: 'live' };
-            }
-            return a;
-          });
+          DB.assignmentsByUser[username] = liveAss.assignments;
           source = 'live';
         }
       } catch {}
@@ -680,7 +673,7 @@ async function handleApi(req, res, url) {
     });
   }
 
-  // 8.1 Submit Assignment (Upload & Submit — bypasses frontend deadline restrictions)
+  // 8.1 Submit Assignment (Upload & Submit — direct live sync)
   if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && req.method === 'POST') {
     const aid = Number(body.assignment_id || body.assignmentId);
     const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
@@ -696,7 +689,25 @@ async function handleApi(req, res, url) {
     let upstream_status = 'simulated';
     if (vmeduLive && typeof vmeduLive.submitLiveAssignment === 'function' && user.username !== 'DEMO123') {
       const up = await vmeduLive.submitLiveAssignment(user, a, fileName, fileData, remarks);
-      if (up && up.ok) upstream_status = 'success';
+      if (up && up.ok) {
+        upstream_status = 'success';
+        try {
+          const liveAss = await vmeduLive.getLiveStudentAssignments(user);
+          if (liveAss && Array.isArray(liveAss.assignments)) {
+            DB.assignmentsByUser[username] = liveAss.assignments;
+          }
+        } catch {}
+      } else {
+        const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Failed to submit assignment on main portal.';
+        return send(res, 400, {
+          ok: false,
+          success: false,
+          status: 'fail',
+          detail: errMsg,
+          message: errMsg,
+          upstream_status: 'failed'
+        });
+      }
     }
 
     a.status = 'Completed';
@@ -716,7 +727,8 @@ async function handleApi(req, res, url) {
       } catch (err) {}
     }
 
-    const pending = userAssignments.filter(x => x.status === 'Pending').length;
+    const updatedList = getUserAssignments(username);
+    const pending = updatedList.filter(x => x.status === 'Pending').length;
     return send(res, 200, {
       ok: true,
       success: true,
@@ -724,9 +736,9 @@ async function handleApi(req, res, url) {
       upstream_status,
       message: 'Assignment submitted and verified successfully.',
       assignment: a,
-      assignments: userAssignments,
+      assignments: updatedList,
       pending_count: pending,
-      completed_count: userAssignments.length - pending
+      completed_count: updatedList.length - pending
     });
   }
 
@@ -749,14 +761,7 @@ async function handleApi(req, res, url) {
       try {
         const liveEx = await vmeduLive.getLiveStudentExams(user);
         if (liveEx && Array.isArray(liveEx.exams) && liveEx.exams.length) {
-          const prevMap = new Map((DB.examsByUser[username] || []).map(e => [String(e.examId), e]));
-          DB.examsByUser[username] = liveEx.exams.map(e => {
-            const prev = prevMap.get(String(e.examId));
-            if (prev && prev.completionStatus === '1' && e.completionStatus !== '1' && prev._localSubmitted) {
-              return { ...e, ...prev, source: 'live' };
-            }
-            return e;
-          });
+          DB.examsByUser[username] = liveEx.exams;
           source = 'live';
         }
       } catch {}
@@ -908,6 +913,16 @@ async function handleApi(req, res, url) {
             }
           } catch {}
         }
+      } else if (submissionType === 'submit') {
+        const errMsg = (up && up.data && up.data.message) || (up && up.error) || 'Exam submission rejected by main portal (validity expired or blocked by faculty).';
+        return send(res, 400, {
+          ok: false,
+          success: false,
+          status: 'fail',
+          detail: errMsg,
+          message: errMsg,
+          upstream_status: 'failed'
+        });
       }
     }
 

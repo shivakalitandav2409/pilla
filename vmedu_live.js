@@ -863,22 +863,52 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
     const token = await getLearnerAuthToken(user);
-    if (!token) return { ok: false, upstream_status: 'simulated' };
+    if (!token) return { ok: false, upstream_status: 'simulated', error: 'No learner auth token' };
 
     const base64Data = fileData && String(fileData).includes('base64,')
       ? String(fileData).split('base64,')[1]
       : String(fileData || '');
     const fileBuf = base64Data ? Buffer.from(base64Data, 'base64') : Buffer.from(remarks || 'Assignment submission');
 
+    const acayr = String(user.acayr || '12');
+    const subjectId = String(assignment.subject_id || '');
+    const assignmentId = String(assignment.id || '');
+    const examId = String(assignment.subId || assignment.id || '0');
+    const studentId = String(user.stuid);
+    const deviceId = user.deviceId || '7880492072756295';
+
+    const secureUploadInput = {
+      acaYear: acayr,
+      subjectId,
+      iid: '987',
+      studentId,
+      assignmentId,
+      examId,
+      InputUserId: Number(user.stuid),
+      InputUserRole: 'learner',
+      deviceId,
+      apiName: 'onlineExam_addStudentAssignment',
+      moduleName: 'assignment'
+    };
+
+    const tokenParam = Buffer.from(JSON.stringify({
+      source: 'web',
+      uid: Number(user.stuid),
+      role: 'learner'
+    })).toString('base64');
+
     const form = new FormData();
     form.append('onlineExam_addStudentAssignment', 'true');
-    form.append('subjectId', String(assignment.subject_id || ''));
-    form.append('uniqueId', String(assignment.id || ''));
-    form.append('parentAssignmentId', String(assignment.id || ''));
-    form.append('subAssignmentId', String(assignment.subId || ''));
-    form.append('studentId', String(user.stuid));
+    form.append('acaYear', acayr);
+    form.append('subjectId', subjectId);
+    form.append('iid', '987');
+    form.append('studentId', studentId);
+    form.append('assignmentId', assignmentId);
+    form.append('examId', examId);
     form.append('remarks', String(remarks || 'Submitted via student portal'));
-    form.append('file', new Blob([fileBuf]), fileName || 'assignment.pdf');
+    form.append('file', new Blob([fileBuf], { type: 'application/pdf' }), fileName || 'assignment.pdf');
+    form.append('data', Buffer.from(JSON.stringify(secureUploadInput)).toString('base64'));
+    form.append('tokenInputParameter', tokenParam);
 
     const res = await fetch('https://portal.vmedulife.com/api/onlineExam/addStudentAssignment.php', {
       method: 'POST',
@@ -891,11 +921,12 @@ async function submitLiveAssignment(user, assignment, fileName, fileData, remark
       body: form
     });
     const text = await res.text();
-    const json = JSON.parse(text.trim());
+    let json = {};
+    try { json = JSON.parse(text.trim()); } catch {}
     const ok = Boolean(json && (json.success === true || json.success === 'true' || json.status === 'success'));
-    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
-  } catch {
-    return { ok: false, upstream_status: 'simulated' };
+    return { ok, upstream_status: ok ? 'success' : 'failed', data: json, error: json.message };
+  } catch (err) {
+    return { ok: false, upstream_status: 'failed', error: err.message };
   }
 }
 

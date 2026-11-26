@@ -994,6 +994,8 @@ function renderExams(filter = 'all') {
             <span>🕐 Scheduled Window: <b style="color:#ffffff;">${esc(e.startTime || '09:00 am')} – ${esc(e.endTime || '11:55 pm')}</b></span>
             <span>⏱️ Duration: <b>${e.durationMinutes || 30} Mins</b> · ${e.totalQuestions || 10} Questions · ${e.totalMarks || 10} Marks</span>
             ${!isComp && e.allowStartExam ? `<span style="color:var(--green); font-weight:600; font-size:.82rem;">🟢 Live Portal Window Open</span>` : ''}
+            ${!isComp && !e.allowStartExam && String(e.startExamLink || '').includes('Expired') ? `<span style="color:#f87171; font-weight:600; font-size:.82rem;">⚠️ Validity Expired on Portal</span>` : ''}
+            ${!isComp && !e.allowStartExam && String(e.startExamLink || '').includes('Blocked') ? `<span style="color:#fbbf24; font-weight:600; font-size:.82rem;">🔒 Access Blocked by Faculty</span>` : ''}
             ${isUrgent ? `<span style="color:#f87171; font-weight:600; font-size:.82rem;">⚠️ Action Required!</span>` : ''}
             ${isComp ? `
               <span style="color:var(--green);font-weight:700;">${scoreLine}</span>
