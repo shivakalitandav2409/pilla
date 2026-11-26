@@ -488,7 +488,7 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
   margin-top: 4px;
   flex-wrap: wrap;
 }
-.ass-view-btn, .ass-resubmit-btn {
+.ass-resubmit-btn {
   font-size: .78rem;
   font-weight: 600;
   padding: 6px 12px;
@@ -498,10 +498,6 @@ h1, h2, h3 { margin: 0; color: #ffffff; }
   background: #181b24;
   color: #ffffff;
   transition: all .15s;
-}
-.ass-view-btn:hover {
-  background: #232838;
-  border-color: var(--accent);
 }
 .ass-resubmit-btn:hover {
   background: #232838;

@@ -379,20 +379,46 @@ function renderDashboardTasks() {
   const examSubEl = $('#dashExamSub');
   const actionSection = $('#actionRequiredSection');
 
-  // Check specifically if the active test (125814 - circular linkedlist by Sapna Raikwar) is pending
-  const circExam = state.exams.find(e => String(e.examId) === '125814');
-  const isCircPending = circExam && circExam.completionStatus !== '1';
+  // Find first active/open or pending exam for the dashboard action banner
+  const nextPendingExam = state.exams.find(e => e.completionStatus === '0' && e.allowStartExam)
+    || state.exams.find(e => e.completionStatus === '0');
 
   if (actionSection) {
-    actionSection.style.display = isCircPending ? 'block' : 'none';
+    if (nextPendingExam) {
+      actionSection.style.display = 'block';
+      const faculties = (nextPendingExam.subjectFaculties || []).map(f => f.FacultyName).join(', ');
+      actionSection.innerHTML = `
+        <div class="pending-banner-row">
+          <div>
+            <div class="pending-banner-meta">
+              <span class="code">${esc(nextPendingExam.subjectName)} · ${esc(nextPendingExam.subjectType)}</span>
+              <span class="pending-pill">${nextPendingExam.allowStartExam ? '🟢 Live Test' : 'Pending Test'} · #${esc(nextPendingExam.examId)}</span>
+            </div>
+            <h3>${esc(nextPendingExam.examName)} <span class="muted">(${esc(nextPendingExam.examSyllabus || 'Syllabus')})</span></h3>
+            <p class="muted">Faculty: <b>${esc(faculties || 'Department Faculty')}</b> · ${nextPendingExam.durationMinutes || 30} Mins (${nextPendingExam.totalQuestions || 10} Qs · ${nextPendingExam.totalMarks || 10} Marks)</p>
+          </div>
+          <button class="btn-primary sm" id="dashTakeTestBtn">
+            Take Test ⏱️
+          </button>
+        </div>
+      `;
+      const dashBtn = $('#dashTakeTestBtn');
+      if (dashBtn) {
+        dashBtn.addEventListener('click', () => {
+          openQuizModal(nextPendingExam.examId, nextPendingExam.examName, nextPendingExam.subjectName, false);
+        });
+      }
+    } else {
+      actionSection.style.display = 'none';
+    }
   }
 
   if (examStatusEl) {
-    examStatusEl.textContent = `${compExams.length} Completed · ${pendExams} ${isCircPending ? 'Not Given' : 'Scheduled'}`;
+    examStatusEl.textContent = `${compExams.length} Completed · ${pendExams} Scheduled`;
   }
   if (examSubEl) {
-    if (isCircPending) {
-      examSubEl.textContent = `⚠️ Action Required: circular linkedlist (Not Given)`;
+    if (nextPendingExam) {
+      examSubEl.textContent = `⚠️ Action Required: ${nextPendingExam.examName}`;
       examSubEl.className = 'tag-warn';
       examSubEl.style.color = '#f87171';
     } else if (compExams.length > 0) {
@@ -436,15 +462,6 @@ function renderDashboardTasks() {
       assSubEl.className = 'tag-success';
       assSubEl.style.color = '';
     }
-  }
-
-  // Wire dashboard action button if present
-  const dashBtn = $('#dashTakeTestBtn');
-  if (dashBtn && !dashBtn._wired) {
-    dashBtn._wired = true;
-    dashBtn.addEventListener('click', () => {
-      openQuizModal('125814', 'circular linkedlist', 'data structure', false);
-    });
   }
 }
 
@@ -941,13 +958,15 @@ function renderExams(filter = 'all') {
     list = list.filter(e => e.completionStatus === filter);
   }
 
-  // Sort so that active pending exams (125814 circular linkedlist and 125821) appear first
+  // Sort: pending first (active/open tests at top), then completed, ordered by examId desc
   list.sort((a, b) => {
-    if (a.completionStatus === '0' && a.examId === '125814') return -1;
-    if (b.completionStatus === '0' && b.examId === '125814') return 1;
     if (a.completionStatus === '0' && b.completionStatus === '1') return -1;
     if (a.completionStatus === '1' && b.completionStatus === '0') return 1;
-    return 0;
+    if (a.completionStatus === '0' && b.completionStatus === '0') {
+      if (a.allowStartExam && !b.allowStartExam) return -1;
+      if (!a.allowStartExam && b.allowStartExam) return 1;
+    }
+    return Number(b.examId || 0) - Number(a.examId || 0);
   });
 
   if (!list.length) {
@@ -963,7 +982,7 @@ function renderExams(filter = 'all') {
 
   $('#examsList').innerHTML = list.map(e => {
     const isComp = e.completionStatus === '1';
-    const isUrgent = !isComp && (e.examId === '125814' || e.examId === '125821');
+    const isUrgent = !isComp && Boolean(e.allowStartExam);
     const faculties = (e.subjectFaculties || []).map(f => f.FacultyName).join(', ');
     const formattedSubAt = e.submittedAt
       ? (isNaN(new Date(String(e.submittedAt).replace(' ', 'T')).getTime())
