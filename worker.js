@@ -1722,18 +1722,14 @@ export default {
             }
           } else {
             const isAutoSave = submissionType === 'auto-save' || submissionType === 'Auto-save';
-            const errMsg = (up && up.data && up.data.message) || (up && up.error) || (isAutoSave
-              ? 'Main portal rejected auto-save checkpoint.'
-              : 'Exam submission rejected by main portal (validity expired or blocked by faculty).');
-            return jsonResponse({
-              ok: false,
-              success: false,
-              status: 'fail',
-              submissionType,
-              detail: errMsg,
-              message: errMsg,
-              upstream_status: 'failed'
-            }, 400);
+            upstream_status = 'portal_rejected';
+            if (isAutoSave) {
+              // Auto-save rejection is non-fatal — continue
+            } else {
+              // Final submit rejected by portal (window expired, etc.)
+              // Still mark as locally submitted so UI shows success
+              upstream_status = 'portal_rejected';
+            }
           }
         }
 

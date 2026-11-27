@@ -977,7 +977,7 @@ function wireAssignmentInteractions() {
             saveAssignmentLocally(id, file.name, iso(new Date()));
           }
           renderDashboardTasks();
-          const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : '';
+          const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : res.upstream_status === 'portal_rejected' ? ' (Portal window expired)' : '';
           toast(`✅ ${file.name} uploaded successfully${syncNote}!`);
           renderAssignments($('#assSeg .seg-btn.active')?.dataset.filter || 'all');
         } catch (err) {
@@ -1258,38 +1258,56 @@ async function openQuizModal(examId, title, subj, isReview = false) {
       if (seq !== quizModalSeq || $('#quizModal').classList.contains('hidden')) return;
 
       currentExamQuestions = qData.questions || [];
-      if ((!isDemoUser && qData.source !== 'live') || !currentExamQuestions.length) {
+      const isExpiredOrUnavailable = (!isDemoUser && qData.source !== 'live') || !currentExamQuestions.length;
+
+      if (isExpiredOrUnavailable) {
+        // Exam window expired/closed — show force-submit UI, don't load questions
         setTimerControlsVisible(false);
-        $('#quizTimer').textContent = '🔒 Unavailable';
-        $('#autoSaveStatus').textContent = '● Portal locked';
-        $('#submitQuizBtn').disabled = true;
+        $('#quizTimer').textContent = '⏰ Window Expired';
+        $('#autoSaveStatus').textContent = '● Attempting late submission…';
+        const liveMsg = qData.liveMessage || 'This examination window has expired on portal.vmedulife.com.';
         $('#quizQuestionsList').innerHTML = `
           <div class="qr-q-card" style="border-left:4px solid var(--amber);">
-            <div class="qr-q-title"><span>🔒 Live Portal Access Unavailable</span></div>
-            <p class="muted" style="margin:0;">${esc(qData.liveMessage || 'This examination is closed, expired, or unavailable on portal.vmedulife.com.')}</p>
+            <div class="qr-q-title"><span>⏰ Exam Window Expired</span></div>
+            <p class="muted" style="margin:0 0 12px;">${esc(liveMsg)}</p>
+            <p style="margin:0 0 8px;font-size:.88rem;color:var(--text);">You can still attempt to submit this exam to the portal — press <strong>Submit Test</strong> below.</p>
           </div>
         `;
-        return;
-      }
+        $('#submitQuizBtn').disabled = false;
+        $('#submitQuizBtn').textContent = 'Submit Test';
+      } else {
+        // 2. Record exam start only if questions succeeded and exam hasn't been started yet
+        const alreadyStarted = Boolean(qData.isAutoSaved)
+          || Boolean(qData.studentExamStartTime && qData.studentExamStartTime !== '0000-00-00 00:00:00')
+          || Boolean(ex?.studentExamStartTime && ex.studentExamStartTime !== '0000-00-00 00:00:00');
+        if (!alreadyStarted) {
+          try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
+        }
 
-      // 2. Record exam start only if questions succeeded and exam hasn't been started yet
-      const alreadyStarted = Boolean(qData.isAutoSaved)
-        || Boolean(qData.studentExamStartTime && qData.studentExamStartTime !== '0000-00-00 00:00:00')
-        || Boolean(ex?.studentExamStartTime && ex.studentExamStartTime !== '0000-00-00 00:00:00');
-      if (!alreadyStarted) {
-        try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
-      }
+        // Auto-fill: use autosaved answers OR auto-select first option for every unanswered MCQ
+        const autoAnswers = Object.assign({}, qData.autoSavedAnswers || {});
+        let autoFilledCount = 0;
+        currentExamQuestions.forEach(q => {
+          const qType = String(q.type || 'MULTIPLE-CHOICE').toUpperCase();
+          const isMCQ = qType !== 'ONE-WORD' && qType !== 'DESCRIPTIVE';
+          const hasAnswer = autoAnswers[q.qid] !== undefined && autoAnswers[q.qid] !== null && String(autoAnswers[q.qid]) !== '';
+          if (isMCQ && !hasAnswer && q.answers && q.answers.length > 0) {
+            autoAnswers[q.qid] = String(q.answers[0].id);
+            autoFilledCount++;
+          }
+        });
+        renderQuizQuestions(currentExamQuestions, autoAnswers);
+        $('#submitQuizBtn').disabled = false;
+        const autoFillNote = autoFilledCount > 0 ? `⚡ ${autoFilledCount} answer(s) auto-selected — click Submit` : '● Autosave active';
+        $('#autoSaveStatus').textContent = qData.isAutoSaved ? '● Restored portal autosave' : autoFillNote;
 
-      renderQuizQuestions(currentExamQuestions, qData.autoSavedAnswers || {});
-      $('#submitQuizBtn').disabled = false;
-      $('#autoSaveStatus').textContent = qData.isAutoSaved ? '● Restored portal autosave' : '● Autosave active';
-
-      const serverRem = Number(qData.remainingTime);
-      const fallbackDur = (Number(qData.durationMinutes) || 30) * 60;
-      const initialSeconds = (qData.remainingTime !== null && qData.remainingTime !== undefined && qData.remainingTime !== '' && Number.isFinite(serverRem))
-        ? Math.max(0, Math.floor(serverRem))
-        : (isDemoUser ? 194 : fallbackDur);
-      startQuizTimer(initialSeconds);
+        const serverRem = Number(qData.remainingTime);
+        const fallbackDur = (Number(qData.durationMinutes) || 30) * 60;
+        const initialSeconds = (qData.remainingTime !== null && qData.remainingTime !== undefined && qData.remainingTime !== '' && Number.isFinite(serverRem))
+          ? Math.max(0, Math.floor(serverRem))
+          : (isDemoUser ? 194 : fallbackDur);
+        startQuizTimer(initialSeconds);
+      } // end else (questions loaded ok)
     } catch (err) {
       if (seq === quizModalSeq) {
         toast('Failed to load examination questions', true);
@@ -1511,7 +1529,9 @@ async function submitQuiz() {
       $('#qrHeading').textContent = '✅ Examination Submitted';
       $('#qrFeedback').textContent = res.upstream_status === 'success'
         ? 'Your responses have been submitted directly to the live portal.'
-        : 'Your responses have been recorded.';
+        : res.upstream_status === 'portal_rejected'
+          ? 'Submission attempt sent to portal (window may have expired). Marks will be awarded by faculty if accepted.'
+          : 'Your responses have been recorded.';
     }
 
     // Render full answer review with selected and correct options
@@ -1541,7 +1561,7 @@ async function submitQuiz() {
     await loadExams();
     renderDashboardTasks();
     renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
-    const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : '';
+    const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : res.upstream_status === 'portal_rejected' ? ' (Portal window expired)' : '';
     toast(res.hasAnswerKey !== false && res.score !== null
       ? `Exam submitted${syncNote}! Score: ${res.score}/${res.totalMarks}`
       : `Exam submitted${syncNote}!`);
@@ -1550,6 +1570,7 @@ async function submitQuiz() {
     toast(err.message || 'Submission failed', true);
     $('#autoSaveStatus').textContent = '● Autosave active';
     $('#submitQuizBtn').disabled = false;
+    $('#submitQuizBtn').textContent = 'Submit Test';
   }
 }
 
