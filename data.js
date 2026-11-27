@@ -3177,6 +3177,304 @@ function parseExamAnswersInput(body) {
   return answers;
 }
 
+function buildLiveUserRecord(username, password, liveData, templateUser, fallbackUser) {
+  const s = (liveData && liveData.studentData) || {};
+  const td = (liveData && liveData.tokenDetails) || {};
+  const group = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
+  const streamName = group.streamname || 'B. Tech';
+  const sid = Number(group.streamid) || 1084;
+  const groupid = Number(group.gid) || 101182;
+  const groupName = group.grpname || '';
+  const semMatch = groupName.match(/-(I{1,3}V?|VI{0,3}|[1-8])(?:-|$)/i);
+  const semester = semMatch ? `Semester ${semMatch[1].toUpperCase()}` : 'Semester III';
+  const yearList = Array.isArray(liveData.AcademicYearList) ? liveData.AcademicYearList : [];
+  const acaYearObj = yearList.find(y => String(y.YearId) === String(s.Acayear));
+  const admYearObj = yearList.find(y => String(y.YearId) === String(s.admissionYear));
+
+  const regBatches = (s.studentAssignedBatches && Array.isArray(s.studentAssignedBatches.ubid_array))
+    ? s.studentAssignedBatches.ubid_array.map(String)
+    : (group.buid ? [String(group.buid)] : []);
+  const elBatches = (s.electiveBatches && Array.isArray(s.electiveBatches.ubid_array))
+    ? s.electiveBatches.ubid_array.map(String)
+    : [];
+  const batchIds = [...new Set([...regBatches, ...elBatches])];
+  if (!batchIds.length) batchIds.push('70134');
+
+  const batchObj = s.studentAssignedBatches && s.studentAssignedBatches.data && s.studentAssignedBatches.data[batchIds[0]];
+  const batchName = (batchObj && batchObj.batchname) || group.batch || 'Batch 1';
+  const elGroupList = (s.electiveBatches && s.electiveBatches.data && typeof s.electiveBatches.data === 'object')
+    ? Object.values(s.electiveBatches.data).map(b => b && b.groupid).filter(Boolean).map(String)
+    : [];
+  const electiveGroupIds = [...new Set([String(groupid), ...elGroupList])];
+
+  const tpl = templateUser || fallbackUser || USERS['STOIST25963'] || {};
+  return {
+    username,
+    password,
+    account: liveData.account || 'student',
+    loginUser: liveData.user || username,
+    name: `${s.FirstName || ''} ${s.LastName || ''}`.trim() || username,
+    mobile: s.MobileNumber || '',
+    email: s.EmailId || '',
+    dp_url: s.UserDp || tpl.dp_url || '',
+    stuid: String(s.stuid || ''),
+    prn: s.PRNno || '',
+    dob: s.DOB || '',
+    streamName,
+    groupName,
+    semester,
+    batchName,
+    academicYear: (acaYearObj && acaYearObj.YearText) || '2026-27',
+    admissionYear: (admYearObj && admYearObj.YearText) || '',
+    points: Number(s.Points) || 0,
+    sid,
+    groupid,
+    buid: Number(batchIds[0]) || 70134,
+    batchIds,
+    electiveGroupIds,
+    acayr: Number(s.Acayear) || 12,
+    learnerToken: (td.data && td.data.user_token) || '',
+    syncToken: (td.data && td.data.sync_token) || '',
+    deviceId: td.deviceId || s.deviceId || '',
+    academicYearList: yearList,
+    groupDetailsArray: Array.isArray(s.groupDetailsArray) ? s.groupDetailsArray : [],
+    studentAssignedBatches: s.studentAssignedBatches || { data: {}, ubid_array: batchIds },
+    electiveBatches: s.electiveBatches || { data: [], ubid_array: [] },
+    rawStudentData: s,
+    mentor: tpl.mentor || {},
+    fees: { totalAmount: 63500, paid: 63500, balance: 0, percentage: 100, status: 'Fully Paid' },
+    streams: [{ sid, groupid: null, name: streamName }, { sid, groupid, name: null }],
+    subjects: tpl.subjects || [],
+    capturedSessions: tpl.capturedSessions || [],
+    targetMetrics: tpl.targetMetrics || {
+      present_count: 38, absent_count: 30, total_sessions: 68, present_pct: 55.88, absent_pct: 44.12, average_pct: 58.99
+    }
+  };
+}
+
+function buildPortalCookieHeader(user, authToken) {
+  const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64');
+  const db64 = (s) => b64(b64(s));
+  const raw = (user && user.rawStudentData) || {};
+  const userDetailsObj = {
+    data: {
+      account: user.account || 'student',
+      user_id: user.loginUser || raw.user_id || user.username || raw.PRNno || user.stuid,
+      Acayear: String(user.acayr || raw.Acayear || '12'),
+      admissionYear: raw.admissionYear !== undefined ? raw.admissionYear : '',
+      DOB: user.dob || raw.DOB || '',
+      EmailId: user.email || raw.EmailId || '',
+      FirstName: raw.FirstName || (user.name || '').split(' ')[0] || '',
+      InstitudeId: raw.InstitudeId || INSTITUTE.id,
+      InstituteLogo: raw.InstituteLogo || INSTITUTE.logo,
+      InstituteName: raw.InstituteName || INSTITUTE.name,
+      InstituteShortName: raw.InstituteShortName || INSTITUTE.shortName,
+      InstituteUrl: raw.InstituteUrl || INSTITUTE.url,
+      LastName: raw.LastName || (user.name || '').split(' ').slice(1).join(' ') || '',
+      MobileNumber: user.mobile || raw.MobileNumber || '',
+      PRNno: user.prn || raw.PRNno || '',
+      PlStream: raw.PlStream || '',
+      Points: user.points !== undefined ? user.points : (raw.Points || 0),
+      UserDp: user.dp_url || raw.UserDp || '',
+      stuid: Number(user.stuid) || raw.stuid || 0,
+      DeviceId: user.deviceId || raw.deviceId || ''
+    },
+    role: 'learner',
+    success: 'true'
+  };
+  const encodedUserDetails = db64(JSON.stringify(userDetailsObj));
+  const encodedAcyearList = db64(JSON.stringify(user.academicYearList || []));
+  const encodedGroupDetails = b64(JSON.stringify(
+    Array.isArray(user.groupDetailsArray) && user.groupDetailsArray.length
+      ? user.groupDetailsArray
+      : [{
+          streamid: String(user.sid || ''),
+          gid: String(user.groupid || ''),
+          grpname: user.groupName || '',
+          default_group: 'default',
+          buid: String(user.buid || ''),
+          batch: user.batchName || '',
+          streamname: user.streamName || ''
+        }]
+  ));
+  const encodedAssignedBatches = b64(JSON.stringify(user.studentAssignedBatches || {
+    data: {},
+    ubid_array: (user.batchIds || []).map(String)
+  }));
+  const elData = (user.electiveBatches && user.electiveBatches.data) ? user.electiveBatches.data : [];
+  const encodedElectiveBatches = b64(JSON.stringify(elData));
+  const tok = authToken || user.learnerToken || '';
+  const syncTok = user.syncToken || '';
+
+  return [
+    `acyear=${encodedAcyearList}`,
+    `learner_studentAssignedBatches=${encodedAssignedBatches}`,
+    `learner_groupDetailsArray=${encodedGroupDetails}`,
+    `learner_studentAssignedElectiveBatches=${encodedElectiveBatches}`,
+    `user_token=${tok}`,
+    `sync_token=${syncTok}`,
+    `user_details=${encodedUserDetails}`,
+    `user_token_wc=${tok}`,
+    `sync_token_wc=${syncTok}`,
+    `user_details_wc=${encodedUserDetails}`
+  ].join('; ');
+}
+
+function mapPortalExam(e) {
+  const isComp = String(e.completionStatus) === '1';
+  const marksAllowed = e.viewStudentMarksAllowed || 'off';
+  const perfAllowed = e.viewStudentPerformanceAllowed || 'off';
+  const rawScore = Number(e.obtainedScore);
+  const hasVisibleScore = isComp && Number.isFinite(rawScore) && (marksAllowed === 'on' || perfAllowed === 'on' || rawScore > 0);
+  const subTime = e.studentExamSubmissionTime && e.studentExamSubmissionTime !== '0000-00-00 00:00:00'
+    ? e.studentExamSubmissionTime
+    : undefined;
+
+  return {
+    examId: String(e.examId),
+    examName: e.examName || 'Examination',
+    examSyllabus: e.examSyllabus || 'General',
+    completionStatus: isComp ? '1' : '0',
+    subjectId: String(e.subjectId || ''),
+    subjectName: e.subjectName || 'Subject',
+    subjectType: e.subjectType || 'Theory',
+    subjectChoice: e.subjectChoice || 'regular',
+    subjectFaculties: Array.isArray(e.subjectFaculties) ? e.subjectFaculties : [],
+    hasQuestions: true,
+    durationMinutes: Number(e.duration) || 30,
+    totalQuestions: Number(e.displayQuestionNumber) || 10,
+    totalMarks: Number(e.examMarks) || 10,
+    startDate: e.examStartDate || '',
+    endDate: e.examEndDate || '',
+    startTime: e.startTime || '',
+    endTime: e.endTime || '',
+    viewStudentMarksAllowed: marksAllowed,
+    viewStudentPerformanceAllowed: perfAllowed,
+    allowStartExam: Boolean(e.allowStartExam),
+    strictMode: e.strictMode || 'off',
+    examAccessStatus: e.examAccessStatus || '',
+    startExamLink: e.startExamLink || '',
+    studentExamStartTime: e.studentExamStartTime || '',
+    submittedAtFormatted: e.studentExamSubmissionTimeFormatted || '',
+    ...(hasVisibleScore ? { studentScore: rawScore } : {}),
+    ...(subTime ? { submittedAt: subTime } : {}),
+    source: 'live'
+  };
+}
+
+function mapPortalAssignment(item, assignmentType = null) {
+  const isExamBased = assignmentType === 'exam' || (item.uniqueid !== undefined && item.parentAssignmentId === undefined);
+  if (isExamBased) {
+    const isComp = item.examAssignmentStatus === 'uploaded';
+    const subFile = item.filePath ? String(item.filePath).split('/').pop() : null;
+    return {
+      id: Number(item.uniqueid || item.id || 0),
+      uniqueid: String(item.uniqueid || item.id || ''),
+      examId: String(item.examId || '0'),
+      subId: String(item.examId || '0'),
+      assignmentType: 'exam',
+      sid: String(item.sid || ''),
+      title: item.title || item.examName || 'Exam Assignment',
+      subAssignmentTitle: item.examName || item.title || '',
+      subject_id: Number(item.subjectId || item.subjectid || 0),
+      subject_name: item.subjectName || 'Subject',
+      subject_type: item.subjectType || 'Theory',
+      due_date: item.submissionDate || '',
+      startDate: '',
+      displayStartDate: 'Exam Coursework',
+      displayEndDate: item.submissionDate || '',
+      displayDateMsg: '',
+      toDisplayAssignment: true,
+      pattern: 'exam-api-upload',
+      status: isComp ? 'Completed' : 'Pending',
+      marks: 10,
+      obtainedMarks: null,
+      evaluation: '',
+      instructor_review: '',
+      submitted_on: isComp ? (item.submissionDate || '') : null,
+      submitted_file: isComp ? (subFile || 'Submitted_Assignment.pdf') : null,
+      learner_attachment_path: item.filePath || '',
+      subAssignmentAttachmentName: '',
+      instructorAttachment: '',
+      instructor_attachment_path: '',
+      facultyName: item.facultyName || '',
+      batchName: '',
+      instruction: item.instruction || '',
+      source: 'live'
+    };
+  }
+
+  const perf = item.performanceData;
+  const hasPerf = Boolean(perf && perf !== '' && (!(Array.isArray(perf)) || perf.length > 0));
+  const needsChange = item.evaluation === 'requestChange';
+  const isCompleted = hasPerf && !needsChange;
+  const subFile = item.learner_attachment_path
+    ? String(item.learner_attachment_path).split('/').pop()
+    : (typeof perf === 'string' && perf.includes('.') ? perf.split('/').pop() : null);
+  const instFile = item.subAssignmentAttachmentName ||
+    (item.instructor_attachment_path ? String(item.instructor_attachment_path).split('/').pop() : null);
+
+  return {
+    id: Number(item.parentAssignmentId || item.id || item.subAssignmentId || 0),
+    subId: String(item.subAssignmentId || ''),
+    assignmentType: 'web',
+    sid: String(item.sid || ''),
+    title: item.parentAssignmentName || item.subAssignmentTitle || 'Coursework Assignment',
+    subAssignmentTitle: item.subAssignmentTitle || item.parentAssignmentName || '',
+    subject_id: Number(item.subjectid || item.subjectId || 0),
+    subject_name: item.subjectName || 'Subject',
+    subject_type: item.subjectType || 'Theory',
+    due_date: item.endDate || '',
+    startDate: item.startDate || '',
+    displayStartDate: item.displayStartDate || item.startDate || '',
+    displayEndDate: item.displayEndDate || item.endDate || '',
+    displayStartTime: item.displayStartTime || '',
+    displayEndTime: item.displayEndTime || '',
+    displayDateMsg: item.displayDateMsg || '',
+    toDisplayAssignment: item.toDisplayAssignment !== undefined ? Boolean(item.toDisplayAssignment) : true,
+    pattern: item.subAssignmentPattern || 'upload',
+    status: isCompleted ? 'Completed' : 'Pending',
+    marks: Number(item.marks) || 10,
+    obtainedMarks: item.obtainedMarks !== undefined && item.obtainedMarks !== '' && item.obtainedMarks !== null
+      ? Number(item.obtainedMarks)
+      : null,
+    evaluation: item.evaluation || '',
+    instructor_review: item.instructor_review || '',
+    submitted_on: isCompleted ? (item.submissionDate || item.endDate || '') : null,
+    submitted_file: isCompleted ? (subFile || 'Submitted_Assignment.pdf') : null,
+    learner_attachment_path: item.learner_attachment_path || '',
+    subAssignmentAttachmentName: item.subAssignmentAttachmentName || '',
+    instructorAttachment: instFile || '',
+    instructor_attachment_path: item.instructor_attachment_path || '',
+    facultyName: item.facultyName || '',
+    batchName: item.batchName || '',
+    instruction: item.subAssignmentInstruction || '',
+    source: 'live'
+  };
+}
+
+function parsePortalUploadHtml(htmlText = '') {
+  const text = String(htmlText || '');
+  const lower = text.toLowerCase();
+  if (lower.includes('authentication failed') || lower.includes('vmlogout.php') || lower.includes('unauthorized request')) {
+    return { ok: false, authFailed: true, error: 'Portal session authentication failed.' };
+  }
+  const ok = lower.includes('file uploaded successfully')
+    || lower.includes('uploaded successfully')
+    || /UserWarningAlert\s*\(\s*["']Success!["']\s*,[^;]*["']success["']\s*\)/i.test(text);
+  if (ok) return { ok: true, message: 'File uploaded successfully.' };
+
+  const warnMatch = text.match(/UserWarningAlert\s*\(\s*["']([^"']*)["']\s*,\s*["']([^"']*)["']\s*,\s*["']([^"']*)["']/i);
+  if (warnMatch && warnMatch[2] && !warnMatch[2].includes("response['message']")) {
+    return { ok: false, error: `${warnMatch[1]}: ${warnMatch[2]}`.trim() };
+  }
+  const alertMatch = text.match(/alert\s*\(\s*["']([^"']+)["']\s*\)/i);
+  if (alertMatch && alertMatch[1]) {
+    return { ok: false, error: alertMatch[1] };
+  }
+  return { ok: false, error: 'Portal did not confirm file upload.' };
+}
+
 module.exports = {
   EXAM_QUESTIONS_125814,
   EXAM_QUESTIONS_AI,
@@ -3187,6 +3485,11 @@ module.exports = {
   parseAutoSavedSelection,
   buildExamPerformanceArray,
   parseExamAnswersInput,
+  buildLiveUserRecord,
+  buildPortalCookieHeader,
+  mapPortalExam,
+  mapPortalAssignment,
+  parsePortalUploadHtml,
   INSTITUTE,
   USERS,
   EXAMS,

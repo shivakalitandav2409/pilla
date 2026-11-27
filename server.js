@@ -32,7 +32,8 @@ const {
   getExamQuestions,
   parseRemainingSeconds,
   formatIstDateTime,
-  parseExamAnswersInput
+  parseExamAnswersInput,
+  buildLiveUserRecord
 } = require('./data.js');
 
 const PORT = process.env.PORT || 3000;
@@ -372,78 +373,11 @@ async function handleApi(req, res, url) {
     const live = await liveAuthenticate(username, password);
     if (live.ok && live.data) {
       isAuthenticated = true;
-      const s = live.data.studentData;
-      const td = live.data.tokenDetails || {};
-      const group = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
-      const streamName = group.streamname || 'B. Tech';
-      const sid = Number(group.streamid) || 1084;
-      const groupid = Number(group.gid) || 101182;
-      const groupName = group.grpname || '';
-      const semMatch = groupName.match(/-(I{1,3}V?|VI{0,3}|[1-8])(?:-|$)/i);
-      const semester = semMatch ? `Semester ${semMatch[1].toUpperCase()}` : 'Semester III';
-      const yearList = Array.isArray(live.data.AcademicYearList) ? live.data.AcademicYearList : [];
-      const acaYearObj = yearList.find(y => String(y.YearId) === String(s.Acayear));
-      const admYearObj = yearList.find(y => String(y.YearId) === String(s.admissionYear));
-      const batchIds = (s.studentAssignedBatches && Array.isArray(s.studentAssignedBatches.ubid_array) && s.studentAssignedBatches.ubid_array.length)
-        ? s.studentAssignedBatches.ubid_array.map(String)
-        : (group.buid ? [String(group.buid)] : ['70134']);
-      const batchObj = s.studentAssignedBatches && s.studentAssignedBatches.data && s.studentAssignedBatches.data[batchIds[0]];
-      const batchName = (batchObj && batchObj.batchname) || group.batch || 'Batch 1';
-      const electiveGroupIds = (s.electiveBatches && s.electiveBatches.data && typeof s.electiveBatches.data === 'object')
-        ? [...new Set(Object.values(s.electiveBatches.data).map(b => b.groupid).filter(Boolean).map(String))]
-        : [];
+      const s = live.data.studentData || {};
+      const grp = (s.groupDetailsArray && s.groupDetailsArray[0]) || {};
+      const sid = Number(grp.streamid) || 1084;
       const templateUser = USERS[username] || (sid === 1075 ? USERS['STOIST251161'] : USERS['STOIST25963']);
-      const matchingSubjects = templateUser ? templateUser.subjects : USERS['STOIST25963'].subjects;
-
-      user = {
-        username: username,
-        password: password,
-        name: `${s.FirstName} ${s.LastName}`.trim(),
-        mobile: s.MobileNumber || '',
-        email: s.EmailId || '',
-        dp_url: s.UserDp || (templateUser && templateUser.dp_url) || '',
-        stuid: String(s.stuid || ''),
-        prn: s.PRNno || '',
-        dob: s.DOB || '',
-        streamName: streamName,
-        groupName: groupName,
-        semester: semester,
-        batchName: batchName,
-        academicYear: (acaYearObj && acaYearObj.YearText) || '2026-27',
-        admissionYear: (admYearObj && admYearObj.YearText) || '',
-        points: Number(s.Points) || 0,
-        sid: sid,
-        groupid: groupid,
-        buid: Number(batchIds[0]) || 70134,
-        batchIds: batchIds,
-        electiveGroupIds: electiveGroupIds,
-        acayr: Number(s.Acayear) || 12,
-        learnerToken: (td.data && td.data.user_token) || '',
-        syncToken: (td.data && td.data.sync_token) || '',
-        deviceId: td.deviceId || s.deviceId || '',
-        mentor: templateUser ? templateUser.mentor : USERS['STOIST25963'].mentor,
-        fees: {
-          totalAmount: 63500,
-          paid: 63500,
-          balance: 0,
-          percentage: 100,
-          status: "Fully Paid"
-        },
-        streams: [
-          { sid: sid, groupid: null, name: streamName },
-          { sid: sid, groupid: groupid, name: null }
-        ],
-        subjects: matchingSubjects,
-        capturedSessions: templateUser ? templateUser.capturedSessions : [],
-        targetMetrics: templateUser ? templateUser.targetMetrics : {
-          present_count: 38,
-          absent_count: 30,
-          total_sessions: 68,
-          present_pct: 55.88,
-          absent_pct: 44.12,
-          average_pct: 58.99
-        }
-      };
+      user = buildLiveUserRecord(username, password, live.data, templateUser, USERS['STOIST25963']);
 
       DB.users[username] = user;
       if (!DB.sessionsByUser[username]) {

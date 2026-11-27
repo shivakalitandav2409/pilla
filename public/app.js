@@ -787,6 +787,11 @@ function renderAssignments(filter = 'all') {
     const isComp = a.status === 'Completed';
     const todayStr = iso(new Date());
     const isPastDue = !isComp && Boolean(a.due_date && a.due_date < todayStr);
+    const isPortalLocked = !isComp && a.toDisplayAssignment === false;
+    const lateNotice = isPortalLocked && a.displayDateMsg
+      ? `${a.displayDateMsg} · Backend API upload enabled`
+      : 'Deadline passed · Late upload enabled via backend API';
+    const acceptAttr = a.assignmentType === 'exam' ? '.pdf' : '*';
     const key = a.subId ? `${a.id}_${a.subId}` : String(a.id);
     const selFile = selectedFiles[key];
     const fileLabelText = selFile
@@ -800,7 +805,7 @@ function renderAssignments(filter = 'all') {
             <span class="code" style="font-size:.78rem;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:3px 9px;border-radius:7px;">
               ${esc(a.subject_name)} ${a.batchName ? `· ${esc(a.batchName)}` : ''}
             </span>
-            <span class="ass-status ${isComp ? 'completed' : 'pending'}">${isPastDue ? 'Past Deadline' : esc(a.status)}</span>
+            <span class="ass-status ${isComp ? 'completed' : 'pending'}">${isPastDue ? 'Past Deadline' : (isPortalLocked ? 'Portal Restricted' : esc(a.status))}</span>
           </div>
           <h3 class="ass-title">${esc(a.title)}</h3>
           <div class="ass-meta">
@@ -812,7 +817,7 @@ function renderAssignments(filter = 'all') {
               <span style="color:var(--green);font-weight:700;">⭐ Obtained Score: ${a.obtainedMarks} / ${a.marks} (${esc(a.evaluation || 'Graded')})</span>
             ` : ''}
             ${a.instructorAttachment ? `<span>📎 Ref Attachment: ${/^https?:\/\//i.test(a.instructor_attachment_path || '') ? `<a href="${esc(a.instructor_attachment_path)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent);font-weight:700;text-decoration:underline;">${esc(a.instructorAttachment)} ↗</a>` : `<b style="color:var(--accent);">${esc(a.instructorAttachment)}</b>`}</span>` : ''}
-            ${isPastDue ? `<span style="color:#fbbf24;font-size:.78rem;font-weight:600;">⚠️ Deadline passed · Late upload enabled via backend API</span>` : ''}
+            ${(isPastDue || isPortalLocked) ? `<span style="color:#fbbf24;font-size:.78rem;font-weight:600;">⚠️ ${esc(lateNotice)}</span>` : ''}
           </div>
           ${a.instruction ? `
             <div style="font-size:.8rem;color:var(--muted);background:rgba(255,255,255,0.03);padding:6px 10px;border-radius:6px;margin:8px 0;border-left:2px solid var(--accent);">
@@ -822,13 +827,13 @@ function renderAssignments(filter = 'all') {
 
           ${!isComp ? `
             <div class="ass-upload-box" id="assBox_${esc(key)}">
-              <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
+              <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept="${acceptAttr}" style="display:none;" />
               <label for="assFile_${esc(key)}" class="ass-file-drop" id="assDrop_${esc(key)}">
                 <span class="ass-drop-icon">📎</span>
                 <span class="ass-drop-text" id="assText_${esc(key)}">${fileLabelText}</span>
               </label>
               <div class="ass-action-row">
-                <span class="ass-file-hint muted" style="font-size:.78rem;">PDF, DOCX, HTML up to 10MB</span>
+                <span class="ass-file-hint muted" style="font-size:.78rem;">${a.assignmentType === 'exam' ? 'PDF only up to 10MB' : 'PDF, DOCX, images, docs up to 10MB'}</span>
                 <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" ${selFile ? '' : 'disabled'}>
                   <span>Upload & Submit</span>
                 </button>
@@ -849,7 +854,7 @@ function renderAssignments(filter = 'all') {
                 </button>
               </div>
               <div class="ass-upload-box hidden" id="assReBox_${esc(key)}" style="margin-top:8px;">
-                <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept=".pdf,.doc,.docx,.txt,.html,.htm,.zip,.py,.cpp" style="display:none;" />
+                <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept="${acceptAttr}" style="display:none;" />
                 <label for="assFile_${esc(key)}" class="ass-file-drop">
                   <span class="ass-drop-icon">📎</span>
                   <span class="ass-drop-text" id="assText_${esc(key)}">Choose new file...</span>
@@ -1248,13 +1253,7 @@ async function openQuizModal(examId, title, subj, isReview = false) {
     $('#autoSaveStatus').textContent = '● Loading...';
 
     try {
-      // Record exam start only on first launch so resumed attempts keep original start time
-      const alreadyStarted = Boolean(ex?.studentExamStartTime && ex.studentExamStartTime !== '0000-00-00 00:00:00');
-      if (!alreadyStarted) {
-        try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
-      }
-
-      // Fetch questions
+      // 1. Fetch questions first (matches Test.har order; avoids touching exam startTime on locked/expired exams)
       const qData = await apiPost('/api/exam/questions', { exam_id: examId, mode: 'take' });
       if (seq !== quizModalSeq || $('#quizModal').classList.contains('hidden')) return;
 
@@ -1271,6 +1270,14 @@ async function openQuizModal(examId, title, subj, isReview = false) {
           </div>
         `;
         return;
+      }
+
+      // 2. Record exam start only if questions succeeded and exam hasn't been started yet
+      const alreadyStarted = Boolean(qData.isAutoSaved)
+        || Boolean(qData.studentExamStartTime && qData.studentExamStartTime !== '0000-00-00 00:00:00')
+        || Boolean(ex?.studentExamStartTime && ex.studentExamStartTime !== '0000-00-00 00:00:00');
+      if (!alreadyStarted) {
+        try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
       }
 
       renderQuizQuestions(currentExamQuestions, qData.autoSavedAnswers || {});
