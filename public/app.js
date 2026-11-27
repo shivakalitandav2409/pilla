@@ -833,7 +833,7 @@ function renderAssignments(filter = 'all') {
                 <span class="ass-drop-text" id="assText_${esc(key)}">${fileLabelText}</span>
               </label>
               <div class="ass-action-row">
-                <span class="ass-file-hint muted" style="font-size:.78rem;">${a.assignmentType === 'exam' ? 'PDF only up to 10MB' : 'PDF, DOCX, images, docs up to 10MB'}</span>
+                <span class="ass-file-hint muted" style="font-size:.78rem;">${a.assignmentType === 'exam' ? 'PDF only up to 20MB' : 'PDF, DOCX, images, docs up to 20MB'}</span>
                 <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" ${selFile ? '' : 'disabled'}>
                   <span>Upload & Submit</span>
                 </button>
@@ -883,11 +883,11 @@ function renderAssignments(filter = 'all') {
 }
 
 function wireAssignmentInteractions() {
-  const MAX_BYTES = 10 * 1024 * 1024;
+  const MAX_BYTES = 20 * 1024 * 1024;
   const pickFile = (key, file, cardEl) => {
     if (!file) return;
     if (file.size > MAX_BYTES) {
-      toast('File exceeds 10MB limit. Please choose a smaller file.', true);
+      toast('File exceeds 20MB limit. Please choose a smaller file.', true);
       return;
     }
     selectedFiles[key] = file;
@@ -934,7 +934,7 @@ function wireAssignmentInteractions() {
         return;
       }
       if (file.size > MAX_BYTES) {
-        toast('File exceeds 10MB limit. Please choose a smaller file.', true);
+        toast('File exceeds 20MB limit. Please choose a smaller file.', true);
         return;
       }
       const origHtml = btn.innerHTML;
