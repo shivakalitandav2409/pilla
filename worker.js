@@ -1425,8 +1425,17 @@ export default {
       if ((route === '/api/assignment/submit' || route === '/api/student/assignments/submit') && request.method === 'POST') {
         const aid = Number(body.assignment_id || body.assignmentId);
         const subId = body.sub_id || body.subAssignmentId ? String(body.sub_id || body.subAssignmentId) : '';
-        const fileName = body.file_name || body.fileName || 'assignment_submission.pdf';
-        const fileData = body.file_data || body.fileData || '';
+        const uploadedFile = (body.file && typeof body.file.arrayBuffer === 'function')
+          ? body.file
+          : ((body.attachment && typeof body.attachment.arrayBuffer === 'function') ? body.attachment : null);
+        let fileName = body.file_name || body.fileName || (uploadedFile && uploadedFile.name) || 'assignment_submission.pdf';
+        let fileData = body.file_data || body.fileData || '';
+        if (!fileData && uploadedFile) {
+          const ab = await uploadedFile.arrayBuffer();
+          const b64 = Buffer.from(ab).toString('base64');
+          const mime = uploadedFile.type || 'application/octet-stream';
+          fileData = `data:${mime};base64,${b64}`;
+        }
         const remarks = body.remarks || 'Submitted via portal';
 
         const userAssignments = getUserAssignments(username);
@@ -1728,15 +1737,16 @@ export default {
           }
         }
 
-        if (submissionType === 'submit' && exam) {
-          exam.completionStatus = '1';
-          exam._localSubmitted = true;
+        const updatedExam = getUserExams(username).find(e => String(e.examId) === examId) || exam;
+        if (submissionType === 'submit' && updatedExam) {
+          updatedExam.completionStatus = '1';
+          updatedExam._localSubmitted = true;
           if (hasAnswerKey) {
-            exam.studentScore = score;
-            exam.submittedTotalMarks = totalMarks;
+            updatedExam.studentScore = score;
+            updatedExam.submittedTotalMarks = totalMarks;
           }
-          exam.submittedAnswers = answers;
-          exam.submittedAt = new Date().toISOString();
+          updatedExam.submittedAnswers = answers;
+          updatedExam.submittedAt = new Date().toISOString();
         }
 
         return jsonResponse({

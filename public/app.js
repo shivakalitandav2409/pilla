@@ -857,11 +857,11 @@ function renderAssignments(filter = 'all') {
                 <input type="file" id="assFile_${esc(key)}" class="ass-file-input" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" accept="${acceptAttr}" style="display:none;" />
                 <label for="assFile_${esc(key)}" class="ass-file-drop">
                   <span class="ass-drop-icon">📎</span>
-                  <span class="ass-drop-text" id="assText_${esc(key)}">Choose new file...</span>
+                  <span class="ass-drop-text" id="assText_${esc(key)}">${selFile ? fileLabelText : 'Choose new file...'}</span>
                 </label>
                 <div class="ass-action-row">
                   <span class="muted" style="font-size:.78rem;">Replace previous submission</span>
-                  <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" disabled>
+                  <button class="ass-upload-btn" id="assBtn_${esc(key)}" data-id="${a.id}" data-sub-id="${esc(a.subId || '')}" data-key="${esc(key)}" ${selFile ? '' : 'disabled'}>
                     <span>Update Submission</span>
                   </button>
                 </div>
@@ -1365,7 +1365,7 @@ function renderQuizQuestions(questions, prefilledAnswers = {}) {
       `;
     }
 
-    const inputType = (qType.includes('MULTIPLE-SELECT') || qType === 'CHECKBOX') ? 'checkbox' : 'radio';
+    const inputType = (qType.includes('MULTIPLE-SELECT') || qType.includes('MULTIPLE_SELECT') || qType.includes('MULTI-SELECT') || qType === 'CHECKBOX') ? 'checkbox' : 'radio';
     const selectedSet = new Set(initialVal ? initialVal.split(',').map(s => s.trim()).filter(Boolean) : []);
     return `
     <div class="q-item" data-qid="${esc(q.qid)}">

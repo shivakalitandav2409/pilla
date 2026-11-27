@@ -299,11 +299,29 @@ function parseBody(buf, contentType = '') {
     const m = contentType.match(/boundary=([^;\s]+)/i);
     if (m) {
       const boundary = m[1].trim().replace(/^"|"$/g, '');
-      const parts = text.split('--' + boundary);
+      const rawStr = buf.toString('latin1');
+      const parts = rawStr.split('--' + boundary);
       for (const p of parts) {
-        const nm = p.match(/name="([^"]+)"\r?\n\r?\n([\s\S]*?)\r?\n?$/);
-        if (nm) {
-          out[nm[1]] = nm[2].replace(/\r?\n--$/, '').trim();
+        const sepIdx = p.indexOf('\r\n\r\n');
+        if (sepIdx === -1) continue;
+        const headerBlock = p.slice(0, sepIdx);
+        let valStr = p.slice(sepIdx + 4);
+        if (valStr.endsWith('\r\n')) valStr = valStr.slice(0, -2);
+        const nameMatch = headerBlock.match(/name="([^"]+)"/i);
+        if (!nameMatch) continue;
+        const fieldName = nameMatch[1];
+        const fileMatch = headerBlock.match(/filename="([^"]*)"/i);
+        if (fileMatch) {
+          const mimeMatch = headerBlock.match(/Content-Type:\s*([^\r\n]+)/i);
+          const partMime = (mimeMatch && mimeMatch[1].trim()) || 'application/octet-stream';
+          const partBuf = Buffer.from(valStr, 'latin1');
+          if (fileMatch[1]) out.fileName = out.fileName || fileMatch[1];
+          out[fieldName] = partBuf;
+          if (!out.fileData && !out.file_data) {
+            out.fileData = `data:${partMime};base64,${partBuf.toString('base64')}`;
+          }
+        } else {
+          out[fieldName] = Buffer.from(valStr, 'latin1').toString('utf8');
         }
       }
     }
@@ -975,15 +993,16 @@ async function handleApi(req, res, url) {
       }
     }
 
-    if (submissionType === 'submit' && exam) {
-      exam.completionStatus = '1';
-      exam._localSubmitted = true;
+    const updatedExam = getUserExams(username).find(e => String(e.examId) === examId) || exam;
+    if (submissionType === 'submit' && updatedExam) {
+      updatedExam.completionStatus = '1';
+      updatedExam._localSubmitted = true;
       if (hasAnswerKey) {
-        exam.studentScore = score;
-        exam.submittedTotalMarks = totalMarks;
+        updatedExam.studentScore = score;
+        updatedExam.submittedTotalMarks = totalMarks;
       }
-      exam.submittedAnswers = answers;
-      exam.submittedAt = new Date().toISOString();
+      updatedExam.submittedAnswers = answers;
+      updatedExam.submittedAt = new Date().toISOString();
     }
 
     return send(res, 200, {
