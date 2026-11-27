@@ -15,7 +15,8 @@ const {
   buildPortalCookieHeader,
   mapPortalExam,
   mapPortalAssignment,
-  parsePortalUploadHtml
+  parsePortalUploadHtml,
+  getMasterAnswerKey
 } = require('./data.js');
 
 function safeJsonParse(text) {
@@ -203,6 +204,10 @@ async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
   if (!fa) fa = await refreshFacultySession();
   if (!fa) return null;
 
+  const currentYear = new Date().getFullYear();
+  const safeStart = startDate || `${currentYear}-01-01`;
+  const safeEnd = endDate || `${currentYear}-12-31`;
+
   const payload = {
     iid: '987',
     iidArray: ['987'],
@@ -210,8 +215,8 @@ async function fetchGroupTimetable(sid, groupId, acayr, startDate, endDate) {
     groupId: String(groupId),
     semesterNumber: '3',
     acayr: String(acayr || '12'),
-    startDate,
-    endDate,
+    startDate: safeStart,
+    endDate: safeEnd,
     getCompletedTopicNames: true
   };
 
@@ -662,6 +667,9 @@ async function getLiveExamQuestions(user, examId) {
       if (String(q.shuffle_answers) === '1' && answers.length > 1) {
         answers = [...answers].sort(() => Math.random() - 0.5);
       }
+      const resolvedKey = typeof getMasterAnswerKey === 'function'
+        ? getMasterAnswerKey(qid, q.question && q.question.qText, answers)
+        : null;
       return {
         qid: String(qid),
         marks: Number(q.marks) || 1,
@@ -669,7 +677,7 @@ async function getLiveExamQuestions(user, examId) {
         text: (q.question && q.question.qText) || '',
         image: (q.question && q.question.qImage) || '',
         answers,
-        correctAnswerId: null
+        correctAnswerId: resolvedKey || null
       };
     });
     const isAutoSaved = json.isAutoSaved === 'true';

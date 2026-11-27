@@ -2465,6 +2465,253 @@ const EXAM_QUESTIONS_125814 = [
   }
 ];
 
+const EXAM_QUESTIONS_COMMUNICATION = [
+  {
+    "qid": "4015001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the primary objective of technical communication?",
+    "answers": [
+      { "id": "4946001", "text": "To entertain the audience" },
+      { "id": "4946002", "text": "To convey specific technical information clearly and accurately" },
+      { "id": "4946003", "text": "To use complex vocabulary and jargon" },
+      { "id": "4946004", "text": "To write lengthy essays" }
+    ],
+    "correctAnswerId": "4946002"
+  },
+  {
+    "qid": "4015002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In the 7 Cs of effective communication, which 'C' emphasizes delivering the message in the fewest words without sacrificing clarity?",
+    "answers": [
+      { "id": "4946005", "text": "Courtesy" },
+      { "id": "4946006", "text": "Conciseness" },
+      { "id": "4946007", "text": "Concreteness" },
+      { "id": "4946008", "text": "Completeness" }
+    ],
+    "correctAnswerId": "4946006"
+  },
+  {
+    "qid": "4015003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which type of listening involves analyzing, evaluating, and judging the content of a message?",
+    "answers": [
+      { "id": "4946009", "text": "Passive listening" },
+      { "id": "4946010", "text": "Appreciative listening" },
+      { "id": "4946011", "text": "Critical / Evaluative listening" },
+      { "id": "4946012", "text": "Discriminative listening" }
+    ],
+    "correctAnswerId": "4946011"
+  },
+  {
+    "qid": "4015004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which barrier to communication occurs due to emotional bias, anxiety, or distrust between speaker and listener?",
+    "answers": [
+      { "id": "4946013", "text": "Physical barrier" },
+      { "id": "4946014", "text": "Psychological barrier" },
+      { "id": "4946015", "text": "Mechanical barrier" },
+      { "id": "4946016", "text": "Linguistic barrier" }
+    ],
+    "correctAnswerId": "4946014"
+  },
+  {
+    "qid": "4015005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In a formal technical report or research paper, what is the role of an Abstract?",
+    "answers": [
+      { "id": "4946017", "text": "To list personal biographies of the authors" },
+      { "id": "4946018", "text": "To provide a concise summary of the entire document including objectives, methods, and key findings" },
+      { "id": "4946019", "text": "To list the table of contents" },
+      { "id": "4946020", "text": "To explain acknowledgements and financial sponsors" }
+    ],
+    "correctAnswerId": "4946018"
+  }
+];
+
+const EXAM_QUESTIONS_WORKSHOP = [
+  {
+    "qid": "4016001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which command in Linux is used to display the current working directory path?",
+    "answers": [
+      { "id": "4947001", "text": "dir" },
+      { "id": "4947002", "text": "pwd" },
+      { "id": "4947003", "text": "cd" },
+      { "id": "4947004", "text": "path" }
+    ],
+    "correctAnswerId": "4947002"
+  },
+  {
+    "qid": "4016002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the function of the 'chmod' command in Unix/Linux?",
+    "answers": [
+      { "id": "4947005", "text": "Change file modification date" },
+      { "id": "4947006", "text": "Change file access permissions" },
+      { "id": "4947007", "text": "Change memory allocation" },
+      { "id": "4947008", "text": "Change model of system" }
+    ],
+    "correctAnswerId": "4947006"
+  },
+  {
+    "qid": "4016003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which IP address represents the standard IPv4 loopback (localhost) address?",
+    "answers": [
+      { "id": "4947009", "text": "192.168.1.1" },
+      { "id": "4947010", "text": "10.0.0.1" },
+      { "id": "4947011", "text": "127.0.0.1" },
+      { "id": "4947012", "text": "255.255.255.0" }
+    ],
+    "correctAnswerId": "4947011"
+  },
+  {
+    "qid": "4016004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which protocol provides secure encrypted terminal access and file transfer over an insecure network?",
+    "answers": [
+      { "id": "4947013", "text": "Telnet" },
+      { "id": "4947014", "text": "HTTP" },
+      { "id": "4947015", "text": "SSH (Secure Shell)" },
+      { "id": "4947016", "text": "FTP" }
+    ],
+    "correctAnswerId": "4947015"
+  },
+  {
+    "qid": "4016005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the primary role of BIOS / UEFI firmware in personal computers?",
+    "answers": [
+      { "id": "4947017", "text": "Compile C++ programs into machine code" },
+      { "id": "4947018", "text": "Perform POST (Power-On Self Test) and initialize hardware to boot the operating system" },
+      { "id": "4947019", "text": "Manage database indexing" },
+      { "id": "4947020", "text": "Provide antivirus network filtering" }
+    ],
+    "correctAnswerId": "4947018"
+  }
+];
+
+const EXAM_QUESTIONS_IPS = [
+  {
+    "qid": "4017001",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is a finite, unambiguous, step-by-step sequence of instructions designed to solve a problem called?",
+    "answers": [
+      { "id": "4948001", "text": "Pseudocode" },
+      { "id": "4948002", "text": "Algorithm" },
+      { "id": "4948003", "text": "Flowchart" },
+      { "id": "4948004", "text": "Compiler" }
+    ],
+    "correctAnswerId": "4948002"
+  },
+  {
+    "qid": "4017002",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "In a standard program flowchart, which geometric symbol represents a decision or conditional branch?",
+    "answers": [
+      { "id": "4948005", "text": "Rectangle" },
+      { "id": "4948006", "text": "Diamond" },
+      { "id": "4948007", "text": "Oval" },
+      { "id": "4948008", "text": "Parallelogram" }
+    ],
+    "correctAnswerId": "4948006"
+  },
+  {
+    "qid": "4017003",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "What is the worst-case time complexity of Binary Search on a sorted array of n elements?",
+    "answers": [
+      { "id": "4948009", "text": "O(n)" },
+      { "id": "4948010", "text": "O(n^2)" },
+      { "id": "4948011", "text": "O(log n)" },
+      { "id": "4948012", "text": "O(1)" }
+    ],
+    "correctAnswerId": "4948011"
+  },
+  {
+    "qid": "4017004",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which programming technique involves a function calling itself directly or indirectly to solve smaller instances of a problem?",
+    "answers": [
+      { "id": "4948013", "text": "Iteration" },
+      { "id": "4948014", "text": "Recursion" },
+      { "id": "4948015", "text": "Paging" },
+      { "id": "4948016", "text": "Polymorphism" }
+    ],
+    "correctAnswerId": "4948014"
+  },
+  {
+    "qid": "4017005",
+    "marks": 1,
+    "type": "MULTIPLE-CHOICE",
+    "text": "Which algorithmic paradigm breaks a complex problem into overlapping subproblems, solves each once, and memoizes the result?",
+    "answers": [
+      { "id": "4948017", "text": "Greedy approach" },
+      { "id": "4948018", "text": "Dynamic Programming" },
+      { "id": "4948019", "text": "Backtracking" },
+      { "id": "4948020", "text": "Brute Force" }
+    ],
+    "correctAnswerId": "4948018"
+  }
+];
+
+function getMasterAnswerKey(qid, text = '', answers = []) {
+  const qStr = String(qid || '');
+  const allSets = [
+    EXAM_QUESTIONS_125821,
+    EXAM_QUESTIONS_125814,
+    EXAM_QUESTIONS_AI,
+    EXAM_QUESTIONS_OOPM,
+    EXAM_QUESTIONS_COMMUNICATION,
+    EXAM_QUESTIONS_WORKSHOP,
+    EXAM_QUESTIONS_IPS
+  ];
+
+  // 1. Direct QID lookup
+  for (const set of allSets) {
+    const found = set.find(q => String(q.qid) === qStr);
+    if (found && found.correctAnswerId) {
+      if (!answers || !answers.length || answers.some(a => String(a.id) === String(found.correctAnswerId))) {
+        return String(found.correctAnswerId);
+      }
+    }
+  }
+
+  // 2. Normalized Text lookup
+  const clean = (s) => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  const targetClean = clean(text);
+  if (targetClean) {
+    for (const set of allSets) {
+      const found = set.find(q => clean(q.text) === targetClean);
+      if (found) {
+        const correctOpt = found.answers.find(a => String(a.id) === String(found.correctAnswerId));
+        if (correctOpt && Array.isArray(answers) && answers.length) {
+          const optClean = clean(correctOpt.text);
+          const matchInLive = answers.find(a => clean(a.text) === optClean);
+          if (matchInLive) return String(matchInLive.id);
+        }
+        if (found.correctAnswerId) return String(found.correctAnswerId);
+      }
+    }
+  }
+
+  return null;
+}
+
 function getExamQuestions(examId, subjectName = '') {
   const id = String(examId || '');
   const sName = String(subjectName || '').toUpperCase();
@@ -2479,6 +2726,15 @@ function getExamQuestions(examId, subjectName = '') {
   }
   if (sName.includes('OOPM') || sName.includes('OBJECT') || sName.includes('C++') || sName.includes('JAVA')) {
     return EXAM_QUESTIONS_OOPM;
+  }
+  if (sName.includes('COMMUNICATION') || sName.includes('ENGLISH') || sName.includes('AL-301')) {
+    return EXAM_QUESTIONS_COMMUNICATION;
+  }
+  if (sName.includes('WORKSHOP') || sName.includes('COMPUTER WORKSHOP')) {
+    return EXAM_QUESTIONS_WORKSHOP;
+  }
+  if (sName.includes('IPS') || sName.includes('PROBLEM') || sName.includes('AL-302')) {
+    return EXAM_QUESTIONS_IPS;
   }
   return EXAM_QUESTIONS_125821;
 }
@@ -3479,6 +3735,10 @@ module.exports = {
   EXAM_QUESTIONS_125814,
   EXAM_QUESTIONS_AI,
   EXAM_QUESTIONS_OOPM,
+  EXAM_QUESTIONS_COMMUNICATION,
+  EXAM_QUESTIONS_WORKSHOP,
+  EXAM_QUESTIONS_IPS,
+  getMasterAnswerKey,
   getExamQuestions,
   parseRemainingSeconds,
   formatIstDateTime,

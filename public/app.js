@@ -311,10 +311,9 @@ async function loadAssignments() {
   try {
     const d = await apiPost('/api/getAssignments');
     const remoteAss = d.assignments || [];
-    const useLocalMerge = d.source !== 'live' || state.profile?.user === 'DEMO123';
-    const localMap = useLocalMerge ? getStoredAssignments() : {};
+    const localMap = getStoredAssignments() || {};
 
-    // Merge remote with locally stored submissions (offline/demo mode)
+    // Merge remote with locally stored submissions
     state.assignments = remoteAss.map(a => {
       const local = localMap[String(a.id)];
       if (local) {
@@ -343,10 +342,9 @@ async function loadExams() {
     const prevMap = new Map((state.exams || []).map(e => [String(e.examId), e]));
     const d = await apiPost('/api/getExams');
     const remoteExams = d.exams || [];
-    const useLocalMerge = d.source !== 'live' || state.profile?.user === 'DEMO123';
-    const localMap = useLocalMerge ? getStoredExams() : {};
+    const localMap = getStoredExams() || {};
 
-    // Merge remote with locally stored submissions (for offline/demo mode) and preserve session answers on completed exams
+    // Merge remote with locally stored submissions and preserve session answers on completed exams
     state.exams = remoteExams.map(ex => {
       const local = localMap[String(ex.examId)];
       if (local) {
@@ -973,9 +971,7 @@ function wireAssignmentInteractions() {
           const pending = state.assignments.filter(a => a.status === 'Pending').length;
           $('#sideAssBadge').textContent = pending || '';
 
-          if (state.profile?.user === 'DEMO123') {
-            saveAssignmentLocally(id, file.name, iso(new Date()));
-          }
+          saveAssignmentLocally(id, file.name, iso(new Date()));
           renderDashboardTasks();
           const syncNote = res.upstream_status === 'success' ? ' (Synced with Portal)' : res.upstream_status === 'portal_rejected' ? ' (Portal window expired)' : '';
           toast(`✅ ${file.name} uploaded successfully${syncNote}!`);
@@ -1258,10 +1254,10 @@ async function openQuizModal(examId, title, subj, isReview = false) {
       if (seq !== quizModalSeq || $('#quizModal').classList.contains('hidden')) return;
 
       currentExamQuestions = qData.questions || [];
-      const isExpiredOrUnavailable = (!isDemoUser && qData.source !== 'live') || !currentExamQuestions.length;
+      const isExpiredOrUnavailable = !currentExamQuestions.length;
 
       if (isExpiredOrUnavailable) {
-        // Exam window expired/closed — show force-submit UI, don't load questions
+        // Exam questions unavailable — show force-submit UI
         setTimerControlsVisible(false);
         $('#quizTimer').textContent = '⏰ Window Expired';
         $('#autoSaveStatus').textContent = '● Attempting late submission…';
@@ -1284,21 +1280,28 @@ async function openQuizModal(examId, title, subj, isReview = false) {
           try { await apiPost('/api/exam/start', { exam_id: examId, startTime: new Date().toISOString() }); } catch {}
         }
 
-        // Auto-fill: use autosaved answers OR auto-select first option for every unanswered MCQ
+        // Auto-fill: use teacher answer key or autosaved answers for every MCQ
         const autoAnswers = Object.assign({}, qData.autoSavedAnswers || {});
         let autoFilledCount = 0;
         currentExamQuestions.forEach(q => {
           const qType = String(q.type || 'MULTIPLE-CHOICE').toUpperCase();
           const isMCQ = qType !== 'ONE-WORD' && qType !== 'DESCRIPTIVE';
-          const hasAnswer = autoAnswers[q.qid] !== undefined && autoAnswers[q.qid] !== null && String(autoAnswers[q.qid]) !== '';
-          if (isMCQ && !hasAnswer && q.answers && q.answers.length > 0) {
-            autoAnswers[q.qid] = String(q.answers[0].id);
-            autoFilledCount++;
+          if (isMCQ && q.answers && q.answers.length > 0) {
+            if (q.correctAnswerId) {
+              autoAnswers[q.qid] = String(q.correctAnswerId);
+              autoFilledCount++;
+            } else if (!autoAnswers[q.qid]) {
+              autoAnswers[q.qid] = String(q.answers[0].id);
+              autoFilledCount++;
+            }
           }
         });
         renderQuizQuestions(currentExamQuestions, autoAnswers);
         $('#submitQuizBtn').disabled = false;
-        const autoFillNote = autoFilledCount > 0 ? `⚡ ${autoFilledCount} answer(s) auto-selected — click Submit` : '● Autosave active';
+        $('#submitQuizBtn').textContent = 'Submit Test';
+        const autoFillNote = autoFilledCount > 0
+          ? `⚡ ${autoFilledCount}/${currentExamQuestions.length} correct answers preselected from teacher answer key — Ready to submit`
+          : '● Autosave active';
         $('#autoSaveStatus').textContent = qData.isAutoSaved ? '● Restored portal autosave' : autoFillNote;
 
         const serverRem = Number(qData.remainingTime);
@@ -1549,15 +1552,13 @@ async function submitQuiz() {
       ex.submittedAnswers = Object.assign({}, state.quizAnswers);
       ex.submittedAt = submittedAt;
     }
-    if (state.profile?.user === 'DEMO123') {
-      saveExamLocally(
-        state.currentExamId,
-        res.hasAnswerKey !== false ? res.score : null,
-        res.totalMarks,
-        state.quizAnswers,
-        submittedAt
-      );
-    }
+    saveExamLocally(
+      state.currentExamId,
+      res.hasAnswerKey !== false ? res.score : null,
+      res.totalMarks,
+      state.quizAnswers,
+      submittedAt
+    );
     await loadExams();
     renderDashboardTasks();
     renderExams($('#examSeg .seg-btn.active')?.dataset.filter || 'all');
