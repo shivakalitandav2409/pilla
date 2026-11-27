@@ -7,6 +7,12 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const {
+  parseRemainingSeconds,
+  formatIstDateTime,
+  parseAutoSavedSelection,
+  buildExamPerformanceArray
+} = require('./data.js');
 
 function safeJsonParse(text) {
   if (!text || typeof text !== 'string') return null;
@@ -698,11 +704,15 @@ async function getLiveExamQuestions(user, examId) {
         correctAnswerId: null
       };
     });
+    const isAutoSaved = json.isAutoSaved === 'true';
+    const autoSavedAnswers = isAutoSaved ? parseAutoSavedSelection(json.userSelection) : {};
     return {
       questions,
-      remainingTime: Number(json.remainingTime) || 1800,
-      isAutoSaved: json.isAutoSaved === 'true',
+      remainingTime: parseRemainingSeconds(json.remainingTime),
+      isAutoSaved,
+      autoSavedAnswers,
       configuration: json.configuration || {},
+      currentServerDatetime: json.currentServerDatetime || '',
       liveStatus: 'live'
     };
   } catch {
@@ -713,9 +723,7 @@ async function getLiveExamQuestions(user, examId) {
 async function startLiveExam(user, examId) {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    const startTime = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const startTime = formatIstDateTime();
     const json = await postOnlineExamApi(user, 'updateStudentOnlineExamStartTime', {
       studentId: Number(user.stuid),
       examId: Number(examId),
@@ -723,38 +731,31 @@ async function startLiveExam(user, examId) {
       source: 'WEB'
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
-    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
-  } catch {
-    return { ok: false, upstream_status: 'simulated' };
+    return { ok, upstream_status: ok ? 'success' : 'failed', startTime, data: json, error: json && json.message };
+  } catch (err) {
+    return { ok: false, upstream_status: 'failed', error: err.message };
   }
 }
 
-async function submitLiveExam(user, examId, answers, remainingTime = 194, submissionType = 'submit') {
+async function submitLiveExam(user, examId, answers, remainingTime = 0, submissionType = 'submit', allQuestionIds = [], questionTypesByQid = {}) {
   if (!user || !user.stuid || user.username === 'DEMO123') return { ok: false, upstream_status: 'simulated' };
   try {
-    const perfArr = Object.entries(answers || {}).map(([q, a]) => {
-      const aArr = Array.isArray(a)
-        ? a.map(String)
-        : String(a ?? '').split(',').map(s => s.trim()).filter(Boolean);
-      return {
-        q: String(q),
-        a: aArr.length ? aArr : ['']
-      };
-    });
+    const perfArr = buildExamPerformanceArray(answers, allQuestionIds, questionTypesByQid);
     const subType = submissionType === 'auto-save' || submissionType === 'Auto-save' ? 'Auto-save' : 'submit';
+    const safeRemaining = parseRemainingSeconds(remainingTime);
     const json = await postOnlineExamApi(user, 'submitOnlineExam', {
       studentId: Number(user.stuid),
       examId: Number(examId),
       performance: JSON.stringify(perfArr),
       score: 0,
-      remainingTime: Number(remainingTime) || 194,
+      remainingTime: safeRemaining !== null ? safeRemaining : 0,
       iid: 987,
       submissionType: subType
     });
     const ok = Boolean(json && (json.success === 'true' || json.success === true || json.status === 'success'));
-    return { ok, upstream_status: ok ? 'success' : 'simulated', data: json };
-  } catch {
-    return { ok: false, upstream_status: 'simulated' };
+    return { ok, upstream_status: ok ? 'success' : 'failed', data: json, error: json && json.message };
+  } catch (err) {
+    return { ok: false, upstream_status: 'failed', error: err.message };
   }
 }
 

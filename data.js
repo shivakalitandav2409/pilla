@@ -3097,11 +3097,96 @@ const NAVIGATION_MODULES = [
   }
 ];
 
+function parseRemainingSeconds(val) {
+  if (val === '' || val === null || val === undefined) return null;
+  const num = Number(val);
+  return Number.isFinite(num) && num >= 0 ? Math.floor(num) : null;
+}
+
+function formatIstDateTime(ms = Date.now()) {
+  const d = new Date(ms + 19800000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+}
+
+function parseAutoSavedSelection(rawSelection) {
+  const map = {};
+  if (!rawSelection) return map;
+  let list = rawSelection;
+  if (typeof list === 'string') {
+    try { list = JSON.parse(list); } catch { return map; }
+  }
+  if (!Array.isArray(list)) return map;
+  list.forEach(item => {
+    if (!item || item.q === undefined || item.q === null) return;
+    const qid = String(item.q);
+    const rawA = item.a;
+    if (Array.isArray(rawA)) {
+      const clean = rawA.map(v => String(v ?? '')).filter(Boolean);
+      if (clean.length) map[qid] = clean.join(',');
+    } else if (rawA !== undefined && rawA !== null && String(rawA) !== '') {
+      map[qid] = String(rawA);
+    }
+  });
+  return map;
+}
+
+function buildExamPerformanceArray(answers, allQuestionIds = [], questionTypesByQid = {}) {
+  const ansMap = answers || {};
+  const orderedIds = [];
+  const seen = new Set();
+  (allQuestionIds || []).forEach(qid => {
+    const k = String(qid);
+    if (!seen.has(k)) { seen.add(k); orderedIds.push(k); }
+  });
+  Object.keys(ansMap).forEach(qid => {
+    const k = String(qid);
+    if (!seen.has(k)) { seen.add(k); orderedIds.push(k); }
+  });
+  return orderedIds.map(qid => {
+    const raw = ansMap[qid];
+    const qType = String(questionTypesByQid[qid] || '').toUpperCase();
+    let aArr;
+    if (Array.isArray(raw)) {
+      aArr = raw.map(v => String(v ?? '')).filter(Boolean);
+    } else if (qType === 'ONE-WORD' || qType === 'DESCRIPTIVE') {
+      const val = String(raw ?? '').trim();
+      aArr = val ? [val] : [''];
+    } else {
+      aArr = String(raw ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return { q: qid, a: aArr.length ? aArr : [''] };
+  });
+}
+
+function parseExamAnswersInput(body) {
+  const answers = Object.assign({}, (body && body.answers) || {});
+  const perfRaw = body && body.performance;
+  let perf = perfRaw;
+  if (typeof perf === 'string') {
+    try { perf = JSON.parse(perf); } catch { perf = null; }
+  }
+  if (Array.isArray(perf)) {
+    perf.forEach(item => {
+      if (item && item.q && Array.isArray(item.a)) {
+        const clean = item.a.map(v => String(v ?? '')).filter(Boolean);
+        if (clean.length) answers[item.q] = clean.join(',');
+      }
+    });
+  }
+  return answers;
+}
+
 module.exports = {
   EXAM_QUESTIONS_125814,
   EXAM_QUESTIONS_AI,
   EXAM_QUESTIONS_OOPM,
   getExamQuestions,
+  parseRemainingSeconds,
+  formatIstDateTime,
+  parseAutoSavedSelection,
+  buildExamPerformanceArray,
+  parseExamAnswersInput,
   INSTITUTE,
   USERS,
   EXAMS,
